@@ -60,6 +60,7 @@ export default function LoginPage() {
             <input
               className="w-full border rounded-lg p-3"
               placeholder="Full name"
+              color="black"  
               value={fullName}
               onChange={(e) => setFullName(e.target.value)}
             />
@@ -84,6 +85,7 @@ export default function LoginPage() {
         <input
           className="w-full border rounded-lg p-3"
           type="email"
+          color="black"
           placeholder="Email"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
@@ -92,6 +94,7 @@ export default function LoginPage() {
           className="w-full border rounded-lg p-3"
           type="password"
           placeholder="Password (min 6 characters)"
+          color=""
           value={password}
           onChange={(e) => setPassword(e.target.value)}
         />
@@ -111,7 +114,7 @@ export default function LoginPage() {
             setError("");
             setMode(mode === "login" ? "signup" : "login");
           }}
-          className="w-full text-sm text-gray-600 underline"
+          className="w-full text-sm text-black-600 underline"
         >
           {mode === "login"
             ? "No account? Sign up"
