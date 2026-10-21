@@ -107,7 +107,7 @@ export default function DriverGate({ driverId }: { driverId: string }) {
 
   if (!info) {
     return (
-      <div className="absolute bottom-4 left-4 right-4 max-w-md mx-auto bg-white rounded-2xl shadow p-4 text-sm">
+      <div className=" left-4 right-4 max-w-md mx-auto bg-white rounded-2xl shadow p-4 text-sm">
         Loading...
       </div>
     );

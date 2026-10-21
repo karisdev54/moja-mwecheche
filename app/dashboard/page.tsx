@@ -59,15 +59,15 @@ export default function Dashboard() {
 
   if (!profile) return <p className="p-6">Loading...</p>;
 
-    return (
-    <div className="fixed inset-0 overflow-hidden">
+      return (
+    <div className="fixed top-0 left-0 w-full h-dvh overflow-hidden">
       {/* Map fills the visible screen */}
       <div className="absolute inset-0">
         <DriverMap assignedDriverId={assignedId} />
       </div>
 
-      {/* Top bar, kept clear of the phone's status bar */}
-      <div className="absolute top-0 left-0 right-0 flex items-center justify-between gap-2 px-3 pt-[max(0.75rem,env(safe-area-inset-top))]">
+      {/* Top bar */}
+      <div className="absolute top-0 left-0 right-0 z-10 flex items-center justify-between gap-2 px-3 pt-[max(0.75rem,env(safe-area-inset-top))]">
         <div className="bg-white rounded-xl shadow px-4 py-2">
           <p className="font-semibold text-gray-900">{profile.full_name || "User"}</p>
           <p className="text-xs font-semibold text-indigo-700 capitalize">{profile.role}</p>
@@ -80,8 +80,8 @@ export default function Dashboard() {
         </button>
       </div>
 
-      {/* Bottom area: everything stacks here, always reachable */}
-      <div className="absolute bottom-0 left-0 right-0 flex flex-col gap-3 px-3 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] max-h-[75dvh] overflow-y-auto">
+      {/* Bottom area: lifted well above the browser toolbar */}
+      <div className="absolute bottom-0 left-0 right-0 z-10 flex flex-col gap-3 px-3 pt-3 pb-[max(5rem,calc(env(safe-area-inset-bottom)+4rem))] max-h-[70dvh] overflow-y-auto">
         {profile.role === "customer" && (
           <div className="w-full max-w-md mx-auto">
             <CustomerPanel userId={profile.id} onAssignedChange={setAssignedId} />
