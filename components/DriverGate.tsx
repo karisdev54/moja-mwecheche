@@ -114,20 +114,20 @@ export default function DriverGate({ driverId }: { driverId: string }) {
   }
 
   if (info.is_verified) {
-    return (
-      <>
-        <div className="absolute bottom-24 left-4 right-4 max-w-md mx-auto">
-          <DriverJobs driverId={driverId} />
-        </div>
-        <div className="absolute bottom-8 left-0 right-0 flex justify-center">
-          <DriverToggle driverId={driverId} />
-        </div>
-      </>
-    );
-  }
+  return (
+    <div className="flex flex-col gap-3">
+      <DriverJobs driverId={driverId} />
+      <div className="flex justify-center">
+        <DriverToggle driverId={driverId} />
+      </div>
+    </div>
+  );
+}
 
   return (
-    <div className="absolute bottom-4 left-4 right-4 max-w-md mx-auto bg-white rounded-2xl shadow p-4 space-y-3 max-h-[60vh] overflow-y-auto">
+  <div className="bg-white rounded-2xl shadow p-4 text-sm text-gray-900">
+    Loading...
+  
       {info.verification_status === "pending" ? (
         <>
           <p className="font-semibold">Documents under review</p>

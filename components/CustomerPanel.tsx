@@ -145,7 +145,7 @@ export default function CustomerPanel({
   };
 
   return (
-    <div className="bg-white rounded-2xl shadow p-4 space-y-3 max-h-[60vh] overflow-y-auto">
+    <div className="bg-white rounded-2xl shadow p-4 space-y-3 max-h-[45dvh] overflow-y-auto">
       {!open ? (
         <button onClick={() => setOpen(true)} className="w-full bg-black text-white rounded-xl p-3">
           Book a driver

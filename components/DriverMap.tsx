@@ -160,5 +160,5 @@ export default function DriverMap({ assignedDriverId = null }: { assignedDriverI
     redrawRef.current();
   }, [assignedDriverId]);
 
-  return <div ref={container} className="h-screen w-full" />;
+  return <div ref={container} className="h-full w-full" />;
 }

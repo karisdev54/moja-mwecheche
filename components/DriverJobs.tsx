@@ -82,7 +82,7 @@ export default function DriverJobs({ driverId }: { driverId: string }) {
   if (visible.length === 0) return null;
 
   return (
-    <div className="bg-white rounded-2xl shadow p-4 space-y-3 max-h-[45vh] overflow-y-auto">
+    <div className="bg-white rounded-2xl shadow p-4 space-y-3 max-h-[35dvh] overflow-y-auto">
       {visible.map((j) => (
         <div key={j.id} className="border rounded-lg p-3 text-sm">
           <div className="flex justify-between">
