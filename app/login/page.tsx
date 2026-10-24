@@ -1,21 +1,31 @@
 "use client";
-import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 
-export default function LoginPage() {
+function LoginForm() {
   const router = useRouter();
-  const [mode, setMode] = useState<"login" | "signup">("login");
+  const params = useSearchParams();
+
+  const [mode, setMode] = useState<"login" | "signup">(
+    params.get("mode") === "signup" ? "signup" : "login"
+  );
+  const [role, setRole] = useState<"customer" | "driver">(
+    params.get("role") === "driver" ? "driver" : "customer"
+  );
   const [fullName, setFullName] = useState("");
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [role, setRole] = useState<"customer" | "driver">("customer");
+  const [agree, setAgree] = useState(false);
   const [error, setError] = useState("");
+  const [info, setInfo] = useState("");
   const [loading, setLoading] = useState(false);
 
   const submit = async () => {
     setError("");
+    setInfo("");
 
     if (mode === "signup") {
       if (!fullName.trim()) {
@@ -24,6 +34,14 @@ export default function LoginPage() {
       }
       if (phone.replace(/\D/g, "").length < 9) {
         setError("Please enter a valid phone number.");
+        return;
+      }
+      if (password.length < 8) {
+        setError("Password must be at least 8 characters.");
+        return;
+      }
+      if (!agree) {
+        setError("Please accept the Terms and Privacy Policy.");
         return;
       }
     }
@@ -45,6 +63,14 @@ export default function LoginPage() {
       setError(result.error.message);
       return;
     }
+
+    // Email confirmation is on: no session yet, so ask them to check their email
+    if (mode === "signup" && !result.data.session) {
+      setInfo("Account created. Check your email and click the confirmation link, then log in.");
+      setMode("login");
+      return;
+    }
+
     router.push("/dashboard");
   };
 
@@ -60,7 +86,6 @@ export default function LoginPage() {
             <input
               className="w-full border rounded-lg p-3"
               placeholder="Full name"
-              color="black"  
               value={fullName}
               onChange={(e) => setFullName(e.target.value)}
             />
@@ -85,7 +110,6 @@ export default function LoginPage() {
         <input
           className="w-full border rounded-lg p-3"
           type="email"
-          color="black"
           placeholder="Email"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
@@ -93,12 +117,32 @@ export default function LoginPage() {
         <input
           className="w-full border rounded-lg p-3"
           type="password"
-          placeholder="Password (min 6 characters)"
-          color=""
+          placeholder="Password (min 8 characters)"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
         />
 
+        {mode === "signup" && (
+          <label className="flex gap-2 text-sm text-gray-900">
+            <input
+              type="checkbox"
+              checked={agree}
+              onChange={(e) => setAgree(e.target.checked)}
+            />
+            <span>
+              I agree to the{" "}
+              <Link href="/terms" className="underline">
+                Terms
+              </Link>{" "}
+              and{" "}
+              <Link href="/privacy" className="underline">
+                Privacy Policy
+              </Link>
+            </span>
+          </label>
+        )}
+
+        {info && <p className="text-green-700 text-sm font-semibold">{info}</p>}
         {error && <p className="text-red-600 text-sm">{error}</p>}
 
         <button
@@ -112,15 +156,23 @@ export default function LoginPage() {
         <button
           onClick={() => {
             setError("");
+            setInfo("");
             setMode(mode === "login" ? "signup" : "login");
           }}
-          className="w-full text-sm text-black-600 underline"
+          className="w-full text-sm text-gray-900 underline"
         >
-          {mode === "login"
-            ? "No account? Sign up"
-            : "Already have an account? Log in"}
+          {mode === "login" ? "No account? Sign up" : "Already have an account? Log in"}
         </button>
       </div>
     </main>
+  );
+}
+
+// Suspense is required because the form reads the URL (?mode=signup&role=driver)
+export default function LoginPage() {
+  return (
+    <Suspense fallback={null}>
+      <LoginForm />
+    </Suspense>
   );
 }

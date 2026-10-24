@@ -3,6 +3,7 @@ import { useEffect, useRef } from "react";
 import mapboxgl from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
 import { supabase } from "@/lib/supabase";
+import type { RouteView } from "@/lib/mapbox";
 
 const STALE_MS = 60000;
 
@@ -14,16 +15,30 @@ type Driver = {
   location_updated_at: string | null;
 };
 
-export default function DriverMap({ assignedDriverId = null }: { assignedDriverId?: string | null }) {
+export default function DriverMap({
+  assignedDriverId = null,
+  route = null,
+}: {
+  assignedDriverId?: string | null;
+  route?: RouteView | null;
+}) {
   const container = useRef<HTMLDivElement>(null);
   const assignedRef = useRef<string | null>(assignedDriverId);
+  const routeRef = useRef<RouteView | null>(route);
   const redrawRef = useRef<() => void>(() => {});
+  const drawRouteRef = useRef<() => void>(() => {});
 
   useEffect(() => {
     if (!container.current) return;
+    if (!process.env.NEXT_PUBLIC_MAPBOX_TOKEN) {
+      console.error("Mapbox token is missing");
+      return;
+    }
 
     let cancelled = false;
+    let loaded = false;
     let fitted: string | null = null;
+    let destMarker: mapboxgl.Marker | null = null;
     const markers: Record<string, mapboxgl.Marker> = {};
     const lastSeen: Record<string, number> = {};
     const latest: Record<string, Driver> = {};
@@ -36,6 +51,57 @@ export default function DriverMap({ assignedDriverId = null }: { assignedDriverI
       style: "mapbox://styles/mapbox/streets-v12",
       center: [36.8219, -1.2921],
       zoom: 12,
+    });
+
+    // Route line and destination pin
+    const drawRoute = () => {
+      if (cancelled || !loaded) return;
+      const r = routeRef.current;
+      const data: GeoJSON.FeatureCollection = {
+        type: "FeatureCollection",
+        features: r
+          ? [{ type: "Feature", properties: {}, geometry: { type: "LineString", coordinates: r.geometry } }]
+          : [],
+      };
+
+      const src = map.getSource("route") as mapboxgl.GeoJSONSource | undefined;
+      if (src) {
+        src.setData(data);
+      } else {
+        map.addSource("route", { type: "geojson", data });
+        map.addLayer({
+          id: "route-casing",
+          type: "line",
+          source: "route",
+          layout: { "line-join": "round", "line-cap": "round" },
+          paint: { "line-color": "#ffffff", "line-width": 9 },
+        });
+        map.addLayer({
+          id: "route-line",
+          type: "line",
+          source: "route",
+          layout: { "line-join": "round", "line-cap": "round" },
+          paint: { "line-color": "#4338ca", "line-width": 5 },
+        });
+      }
+
+      destMarker?.remove();
+      destMarker = null;
+      if (!r) return;
+
+      destMarker = new mapboxgl.Marker({ color: "#f59e0b" }).setLngLat(r.to).addTo(map);
+      const bounds = new mapboxgl.LngLatBounds(r.from, r.from);
+      r.geometry.forEach((c) => bounds.extend(c));
+      map.fitBounds(bounds, {
+        padding: { top: 90, bottom: 280, left: 40, right: 40 },
+        maxZoom: 16,
+        duration: 800,
+      });
+    };
+    drawRouteRef.current = drawRoute;
+    map.on("load", () => {
+      loaded = true;
+      drawRoute();
     });
 
     const removeDriver = (id: string) => {
@@ -52,7 +118,7 @@ export default function DriverMap({ assignedDriverId = null }: { assignedDriverI
         const lngLat: [number, number] = [pos.coords.longitude, pos.coords.latitude];
         if (!markers["me"]) {
           markers["me"] = new mapboxgl.Marker({ color: "#2563eb" }).setLngLat(lngLat).addTo(map);
-          map.flyTo({ center: lngLat, zoom: 14 });
+          if (!routeRef.current) map.flyTo({ center: lngLat, zoom: 14 });
         } else {
           markers["me"].setLngLat(lngLat);
         }
@@ -61,7 +127,6 @@ export default function DriverMap({ assignedDriverId = null }: { assignedDriverI
       { enableHighAccuracy: true }
     );
 
-    // Draws one driver: red if assigned to me, green otherwise
     const draw = (d: Driver) => {
       if (cancelled || d.lat === null || d.lng === null) return;
       const isAssigned = d.id === assignedRef.current;
@@ -80,7 +145,7 @@ export default function DriverMap({ assignedDriverId = null }: { assignedDriverI
         assignedFlag[d.id] = isAssigned;
       }
 
-      if (isAssigned && fitted !== d.id) {
+      if (isAssigned && fitted !== d.id && !routeRef.current) {
         fitted = d.id;
         if (markers["me"]) {
           const bounds = new mapboxgl.LngLatBounds()
@@ -146,19 +211,25 @@ export default function DriverMap({ assignedDriverId = null }: { assignedDriverI
     return () => {
       cancelled = true;
       redrawRef.current = () => {};
+      drawRouteRef.current = () => {};
       navigator.geolocation.clearWatch(watchId);
       clearInterval(sweep);
       supabase.removeChannel(channel);
+      destMarker?.remove();
       Object.keys(markers).forEach((id) => markers[id].remove());
       map.remove();
     };
   }, []);
 
-  // When the assigned driver changes, recolor markers without rebuilding the map
   useEffect(() => {
     assignedRef.current = assignedDriverId;
     redrawRef.current();
   }, [assignedDriverId]);
+
+  useEffect(() => {
+    routeRef.current = route;
+    drawRouteRef.current();
+  }, [route]);
 
   return <div ref={container} className="h-full w-full" />;
 }

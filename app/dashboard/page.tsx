@@ -6,6 +6,8 @@ import { supabase } from "@/lib/supabase";
 import DriverMap from "@/components/DriverMap";
 import DriverGate from "@/components/DriverGate";
 import CustomerPanel from "@/components/CustomerPanel";
+import Sheet from "@/components/Sheet";
+import type { RouteView } from "@/lib/mapbox";
 
 type Profile = { id: string; full_name: string | null; role: string };
 
@@ -14,6 +16,7 @@ export default function Dashboard() {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loadError, setLoadError] = useState("");
   const [assignedId, setAssignedId] = useState<string | null>(null);
+  const [route, setRoute] = useState<RouteView | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -50,47 +53,41 @@ export default function Dashboard() {
     return (
       <div className="p-6 space-y-3">
         <p className="text-red-600">Could not load: {loadError}</p>
-        <button onClick={logout} className="underline text-sm">
-          Log out
-        </button>
+        <button onClick={logout} className="underline text-sm">Log out</button>
       </div>
     );
   }
 
   if (!profile) return <p className="p-6">Loading...</p>;
 
-      return (
+  return (
     <div className="fixed top-0 left-0 w-full h-dvh overflow-hidden">
-      {/* Map fills the visible screen */}
       <div className="absolute inset-0">
-        <DriverMap assignedDriverId={assignedId} />
+        <DriverMap assignedDriverId={assignedId} route={route} />
       </div>
 
-      {/* Top bar */}
       <div className="absolute top-0 left-0 right-0 z-10 flex items-center justify-between gap-2 px-3 pt-[max(0.75rem,env(safe-area-inset-top))]">
         <div className="bg-white rounded-xl shadow px-4 py-2">
           <p className="font-semibold text-gray-900">{profile.full_name || "User"}</p>
           <p className="text-xs font-semibold text-indigo-700 capitalize">{profile.role}</p>
         </div>
-        <button
-          onClick={logout}
-          className="bg-white rounded-xl shadow px-4 py-3 text-sm font-semibold text-gray-900"
-        >
+        <button onClick={logout} className="bg-white rounded-xl shadow px-4 py-3 text-sm font-semibold text-gray-900">
           Log out
         </button>
       </div>
 
-      {/* Bottom area: lifted well above the browser toolbar */}
-      <div className="absolute bottom-0 left-0 right-0 z-10 flex flex-col gap-3 px-3 pt-3 pb-[max(5rem,calc(env(safe-area-inset-bottom)+4rem))] max-h-[70dvh] overflow-y-auto">
+      <div className="absolute bottom-0 left-0 right-0 z-10 flex flex-col gap-2 px-3 pt-3 pb-[max(5rem,calc(env(safe-area-inset-bottom)+4rem))]">
         {profile.role === "customer" && (
           <div className="w-full max-w-md mx-auto">
-            <CustomerPanel userId={profile.id} onAssignedChange={setAssignedId} />
+            <Sheet title="Book a driver">
+              <CustomerPanel userId={profile.id} onAssignedChange={setAssignedId} onRouteChange={setRoute} />
+            </Sheet>
           </div>
         )}
 
         {profile.role === "driver" && (
-          <div className="w-full max-w-md mx-auto">
-            <DriverGate driverId={profile.id} />
+          <div className="w-full max-w-md mx-auto flex flex-col gap-2">
+            <DriverGate driverId={profile.id} onRouteChange={setRoute} />
           </div>
         )}
 

@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
+import { fmtMinutes, getRoute, type LngLat, type RouteView } from "@/lib/mapbox";
 
 type Job = {
   id: string;
@@ -12,6 +13,12 @@ type Job = {
   price: number;
   status: string;
   paid: boolean;
+  pickup_lat: number;
+  pickup_lng: number;
+  dest_lat: number | null;
+  dest_lng: number | null;
+  route_km: number | null;
+  route_min: number | null;
 };
 
 const NEXT: Record<string, { status: string; label: string }> = {
@@ -22,15 +29,34 @@ const NEXT: Record<string, { status: string; label: string }> = {
 async function fetchOpenJobs(): Promise<Job[]> {
   const { data } = await supabase
     .from("bookings")
-    .select("id,driver_id,task_type,scheduled_at,duration_hours,destination,price,status,paid")
+    .select(
+      "id,driver_id,task_type,scheduled_at,duration_hours,destination,price,status,paid,pickup_lat,pickup_lng,dest_lat,dest_lng,route_km,route_min"
+    )
     .in("status", ["requested", "accepted", "in_progress"])
     .order("scheduled_at", { ascending: true });
   return (data ?? []) as Job[];
 }
 
-export default function DriverJobs({ driverId }: { driverId: string }) {
+// Where the driver should be heading for this job right now
+function targetFor(j: Job): { coords: LngLat; label: string } {
+  if (j.status === "in_progress" && j.dest_lat !== null && j.dest_lng !== null) {
+    return { coords: [j.dest_lng, j.dest_lat], label: "To destination" };
+  }
+  return { coords: [j.pickup_lng, j.pickup_lat], label: "To pickup" };
+}
+
+export default function DriverJobs({
+  driverId,
+  onRouteChange,
+}: {
+  driverId: string;
+  onRouteChange?: (r: RouteView | null) => void;
+}) {
   const [jobs, setJobs] = useState<Job[]>([]);
   const [declined, setDeclined] = useState<string[]>([]);
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [routeMsg, setRouteMsg] = useState("");
+  const [shown, setShown] = useState<{ jobId: string; label: string; km: number; minutes: number } | null>(null);
 
   const reload = () => {
     fetchOpenJobs().then(setJobs);
@@ -46,6 +72,7 @@ export default function DriverJobs({ driverId }: { driverId: string }) {
     };
 
     refresh();
+    const timer = setInterval(refresh, 20000);
 
     const channel = supabase
       .channel("driver-jobs")
@@ -54,9 +81,39 @@ export default function DriverJobs({ driverId }: { driverId: string }) {
 
     return () => {
       active = false;
+      clearInterval(timer);
       supabase.removeChannel(channel);
     };
   }, []);
+
+  const showRoute = (j: Job) => {
+    setRouteMsg("");
+    setBusyId(j.id);
+    const t = targetFor(j);
+    navigator.geolocation.getCurrentPosition(
+      async (pos) => {
+        const from: LngLat = [pos.coords.longitude, pos.coords.latitude];
+        const r = await getRoute(from, t.coords);
+        setBusyId(null);
+        if (!r) {
+          setRouteMsg("Could not find a route.");
+          return;
+        }
+        setShown({ jobId: j.id, label: t.label, km: r.km, minutes: r.minutes });
+        onRouteChange?.({ geometry: r.geometry, from, to: t.coords });
+      },
+      () => {
+        setBusyId(null);
+        setRouteMsg("Turn on location to see the route.");
+      },
+      { enableHighAccuracy: true, timeout: 10000 }
+    );
+  };
+
+  const clearRoute = () => {
+    setShown(null);
+    onRouteChange?.(null);
+  };
 
   const accept = async (id: string) => {
     const { data } = await supabase
@@ -72,6 +129,7 @@ export default function DriverJobs({ driverId }: { driverId: string }) {
 
   const advance = async (id: string, status: string) => {
     await supabase.from("bookings").update({ status }).eq("id", id).eq("driver_id", driverId);
+    if (status === "completed") clearRoute();
     reload();
   };
 
@@ -79,39 +137,87 @@ export default function DriverJobs({ driverId }: { driverId: string }) {
     (j) => (j.status === "requested" && !declined.includes(j.id)) || j.driver_id === driverId
   );
 
-  if (visible.length === 0) return null;
+  if (visible.length === 0) {
+    return (
+      <div className="bg-indigo-50 border-2 border-indigo-200 rounded-xl p-3 text-sm text-gray-900">
+        No requests within 10 km right now. Stay online and new jobs will appear here.
+      </div>
+    );
+  }
 
   return (
-    <div className="bg-white rounded-2xl shadow p-4 space-y-3 max-h-[35dvh] overflow-y-auto">
-      {visible.map((j) => (
-        <div key={j.id} className="border rounded-lg p-3 text-sm">
-          <div className="flex justify-between">
-            <span className="font-semibold">{j.task_type}</span>
-            <span>KES {j.price}</span>
-          </div>
-          <p className="text-gray-500">
-            {new Date(j.scheduled_at).toLocaleString()} · {j.duration_hours}h
-            {j.destination ? ` · to ${j.destination}` : ""}
-          </p>
-
-          {j.status === "requested" ? (
-            <div className="flex gap-2 mt-2">
-              <button onClick={() => accept(j.id)} className="flex-1 bg-green-600 text-white rounded-lg p-2">Accept</button>
-              <button onClick={() => setDeclined([...declined, j.id])} className="flex-1 border rounded-lg p-2">Decline</button>
+    <div className="space-y-3">
+      {visible.map((j) => {
+        const t = targetFor(j);
+        const navUrl = `https://www.google.com/maps/dir/?api=1&destination=${t.coords[1]},${t.coords[0]}&travelmode=driving`;
+        return (
+          <div key={j.id} className="border-2 border-indigo-200 bg-indigo-50 rounded-xl p-3 text-sm text-gray-900">
+            <div className="flex justify-between">
+              <span className="font-bold">{j.task_type}</span>
+              <span className="font-bold text-indigo-800">KES {j.price}</span>
             </div>
-          ) : j.status === "accepted" && !j.paid ? (
-            <p className="mt-2 text-xs text-gray-600 bg-gray-100 rounded-lg p-2">
-              Waiting for the customer to pay. You can start once payment is received.
+            <p className="text-gray-700">
+              {new Date(j.scheduled_at).toLocaleString()} · {j.duration_hours}h
             </p>
-          ) : (
-            NEXT[j.status] && (
-              <button onClick={() => advance(j.id, NEXT[j.status].status)} className="w-full mt-2 bg-black text-white rounded-lg p-2">
-                {NEXT[j.status].label}
+            {j.destination && (
+              <p className="mt-1">
+                📍 To {j.destination}
+                {j.route_km ? ` · ${j.route_km} km` : ""}
+                {j.route_min ? ` · about ${fmtMinutes(j.route_min)}` : ""}
+              </p>
+            )}
+
+            {shown?.jobId === j.id && (
+              <p className="mt-1 font-semibold text-indigo-800">
+                {shown.label}: {shown.km} km · {fmtMinutes(shown.minutes)} from you
+              </p>
+            )}
+
+            <div className="flex gap-2 mt-2">
+              <button
+                onClick={() => showRoute(j)}
+                disabled={busyId === j.id}
+                className="flex-1 bg-white border-2 border-indigo-300 rounded-lg p-2 font-semibold disabled:opacity-50"
+              >
+                {busyId === j.id ? "Finding..." : j.status === "requested" ? "View pickup route" : t.label === "To pickup" ? "Route to pickup" : "Route to destination"}
               </button>
-            )
-          )}
-        </div>
-      ))}
+              {j.status !== "requested" && (
+                <a
+                  href={navUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="flex-1 bg-blue-600 text-white rounded-lg p-2 font-semibold text-center"
+                >
+                  Navigate
+                </a>
+              )}
+            </div>
+            {shown?.jobId === j.id && (
+              <button onClick={clearRoute} className="text-xs underline mt-1">Clear route</button>
+            )}
+            {routeMsg && busyId === null && shown?.jobId !== j.id && (
+              <p className="text-xs text-red-600 mt-1">{routeMsg}</p>
+            )}
+
+            {j.status === "requested" ? (
+              <div className="flex gap-2 mt-2">
+                <button onClick={() => accept(j.id)} className="flex-1 bg-green-600 text-white font-bold rounded-lg p-3">Accept</button>
+                <button onClick={() => setDeclined([...declined, j.id])} className="flex-1 bg-white border-2 border-indigo-200 rounded-lg p-3">Decline</button>
+              </div>
+            ) : j.status === "accepted" && !j.paid ? (
+              <p className="mt-2 text-xs text-gray-900 bg-white rounded-lg p-2 border border-indigo-200">
+                Waiting for the customer to pay. You can start once payment is received.
+              </p>
+            ) : (
+              NEXT[j.status] && (
+                <button onClick={() => advance(j.id, NEXT[j.status].status)} className="w-full mt-2 bg-indigo-600 text-white font-bold rounded-lg p-3">
+                  {NEXT[j.status].label}
+                </button>
+              )
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 }

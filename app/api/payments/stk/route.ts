@@ -37,7 +37,7 @@ export async function POST(req: Request) {
   }
 
   // Stop double taps from sending two prompts
-  const since = new Date(Date.now() - 2 * 60 * 1000).toISOString();
+  const since = new Date(Date.now() - 90 * 1000).toISOString();
   const { data: pending } = await supabaseAdmin
     .from("payments")
     .select("id")

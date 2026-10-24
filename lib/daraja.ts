@@ -64,3 +64,45 @@ export async function stkPush(args: {
   }
   return json;
 }
+
+export type StkQueryResult = {
+  state: "pending" | "success" | "failed";
+  description: string;
+};
+
+export async function stkQuery(checkoutRequestId: string): Promise<StkQueryResult> {
+  const shortcode = process.env.DARAJA_SHORTCODE as string;
+  const passkey = process.env.DARAJA_PASSKEY as string;
+  const timestamp = new Date().toISOString().replace(/\D/g, "").slice(0, 14);
+  const password = Buffer.from(shortcode + passkey + timestamp).toString("base64");
+  const token = await getAccessToken();
+
+  const res = await fetch(`${BASE}/mpesa/stkpushquery/v1/query`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    cache: "no-store",
+    body: JSON.stringify({
+      BusinessShortCode: shortcode,
+      Password: password,
+      Timestamp: timestamp,
+      CheckoutRequestID: checkoutRequestId,
+    }),
+  });
+
+  let json: { ResultCode?: string | number; ResultDesc?: string } = {};
+  try {
+    json = await res.json();
+  } catch {
+    // Safaricom sometimes returns an empty body while processing
+  }
+
+  // While the customer is still entering the PIN, Safaricom answers with an error.
+  // That means "not finished yet", not "failed".
+  if (!res.ok || json.ResultCode === undefined) {
+    return { state: "pending", description: "Waiting for the customer to enter the PIN" };
+  }
+
+  const code = Number(json.ResultCode);
+  if (code === 0) return { state: "success", description: json.ResultDesc ?? "Success" };
+  return { state: "failed", description: json.ResultDesc ?? "Payment failed" };
+}

@@ -1,8 +1,12 @@
 "use client";
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 import DriverToggle from "@/components/DriverToggle";
 import DriverJobs from "@/components/DriverJobs";
+import DriverRating from "@/components/DriverRating";
+import Sheet from "@/components/Sheet";
+import type { RouteView } from "@/lib/mapbox";
 
 type DriverRow = {
   is_verified: boolean;
@@ -10,26 +14,23 @@ type DriverRow = {
   rejection_reason: string | null;
 };
 
-const DOCS = [
-  { type: "national_id", label: "National ID or passport", required: true },
-  { type: "driving_license", label: "Driving license", required: true },
-  { type: "good_conduct", label: "Certificate of good conduct (optional)", required: false },
-];
-
 async function fetchDriver(driverId: string): Promise<DriverRow | null> {
   const { data } = await supabase
     .from("drivers")
     .select("is_verified,verification_status,rejection_reason")
     .eq("id", driverId)
-    .single();
+    .maybeSingle();
   return data as DriverRow | null;
 }
 
-export default function DriverGate({ driverId }: { driverId: string }) {
+export default function DriverGate({
+  driverId,
+  onRouteChange,
+}: {
+  driverId: string;
+  onRouteChange?: (r: RouteView | null) => void;
+}) {
   const [info, setInfo] = useState<DriverRow | null>(null);
-  const [files, setFiles] = useState<Record<string, File | null>>({});
-  const [busy, setBusy] = useState(false);
-  const [msg, setMsg] = useState("");
 
   useEffect(() => {
     let active = true;
@@ -62,112 +63,45 @@ export default function DriverGate({ driverId }: { driverId: string }) {
     };
   }, [driverId]);
 
-  const submit = async () => {
-    setMsg("");
-    if (DOCS.some((d) => d.required && !files[d.type])) {
-      setMsg("Please attach your ID and driving license.");
-      return;
-    }
-    if (Object.values(files).some((f) => f && f.size > 5 * 1024 * 1024)) {
-      setMsg("Each file must be under 5 MB.");
-      return;
-    }
-
-    setBusy(true);
-    for (const d of DOCS) {
-      const f = files[d.type];
-      if (!f) continue;
-      const ext = f.name.split(".").pop() || "jpg";
-      const path = `${driverId}/${d.type}-${Date.now()}.${ext}`;
-
-      const up = await supabase.storage.from("driver-docs").upload(path, f);
-      if (up.error) {
-        setMsg(up.error.message);
-        setBusy(false);
-        return;
-      }
-      const ins = await supabase
-        .from("driver_documents")
-        .insert({ driver_id: driverId, doc_type: d.type, file_path: path });
-      if (ins.error) {
-        setMsg(ins.error.message);
-        setBusy(false);
-        return;
-      }
-    }
-
-    const { error } = await supabase
-      .from("drivers")
-      .update({ verification_status: "pending" })
-      .eq("id", driverId);
-    setBusy(false);
-    if (error) setMsg(error.message);
-    else fetchDriver(driverId).then(setInfo);
-  };
-
   if (!info) {
-    return (
-      <div className=" left-4 right-4 max-w-md mx-auto bg-white rounded-2xl shadow p-4 text-sm">
-        Loading...
-      </div>
-    );
+    return <div className="bg-white rounded-2xl shadow p-4 text-sm text-gray-900">Loading...</div>;
   }
 
   if (info.is_verified) {
-  return (
-    <div className="flex flex-col gap-3">
-      <DriverJobs driverId={driverId} />
-      <div className="flex justify-center">
-        <DriverToggle driverId={driverId} />
-      </div>
-    </div>
-  );
-}
+    return (
+      <>
+        <div className="flex justify-center">
+          <DriverToggle driverId={driverId} />
+        </div>
+        <Sheet title="My jobs">
+          <DriverRating driverId={driverId} />
+          <DriverJobs driverId={driverId} onRouteChange={onRouteChange} />
+        </Sheet>
+      </>
+    );
+  }
 
   return (
-  <div className="bg-white rounded-2xl shadow p-4 text-sm text-gray-900">
-    Loading...
-  
+    <div className="bg-white rounded-2xl shadow-lg p-4 space-y-3 text-gray-900">
       {info.verification_status === "pending" ? (
         <>
-          <p className="font-semibold">Documents under review</p>
-          <p className="text-sm text-gray-600">
-            We are checking your documents. You will be able to go online as soon as you are approved.
-          </p>
+          <p className="font-bold text-lg">⏳ Documents under review</p>
+          <p className="text-sm">We are checking your documents. You can go online as soon as you are approved, and this screen will update by itself.</p>
         </>
       ) : (
         <>
-          <p className="font-semibold">Verify your account</p>
+          <p className="font-bold text-lg">
+            {info.verification_status === "rejected" ? "❌ Please upload again" : "👋 One last step"}
+          </p>
           {info.verification_status === "rejected" && (
             <p className="text-sm text-red-600">
-              Your last submission was rejected
-              {info.rejection_reason ? `: ${info.rejection_reason}` : "."} Please upload again.
+              Your last submission was rejected{info.rejection_reason ? `: ${info.rejection_reason}` : "."}
             </p>
           )}
-          <p className="text-sm text-gray-600">
-            Upload clear photos or PDFs. You can start driving once an admin approves them.
-          </p>
-          {DOCS.map((d) => (
-            <label key={d.type} className="block text-sm">
-              <span className="block mb-1">{d.label}</span>
-              <input
-                type="file"
-                accept="image/*,application/pdf"
-                className="w-full text-sm"
-                onChange={(e) =>
-                  setFiles((prev) => ({ ...prev, [d.type]: e.target.files?.[0] ?? null }))
-                }
-              />
-            </label>
-          ))}
-          {msg && <p className="text-red-600 text-sm">{msg}</p>}
-          <button
-            onClick={submit}
-            disabled={busy}
-            className="w-full bg-black text-white rounded-lg p-3 disabled:opacity-50"
-          >
-            {busy ? "Uploading..." : "Submit for review"}
-          </button>
+          <p className="text-sm">Upload your ID and driving licence to start accepting jobs. It takes about two minutes.</p>
+          <Link href="/driver/verify" className="block w-full bg-indigo-600 text-white font-bold rounded-xl p-4 text-center">
+            Upload my documents
+          </Link>
         </>
       )}
     </div>

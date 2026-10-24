@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
-
-const COMMISSION_RATE = 0.15; // your cut: 15%. Change as you like.
+import { markPaymentFailed, markPaymentSuccess } from "@/lib/payments";
 
 type CallbackBody = {
   Body?: {
@@ -35,57 +34,36 @@ export async function POST(req: Request) {
 
   const { data: payment } = await supabaseAdmin
     .from("payments")
-    .select("id,booking_id,amount,status")
+    .select("id,booking_id,amount,status,mpesa_receipt")
     .eq("checkout_request_id", cb.CheckoutRequestID)
     .maybeSingle();
 
-  // Unknown or already handled (Safaricom can send the same callback twice)
-  if (!payment || payment.status !== "pending") return accepted;
-
-  if (cb.ResultCode !== 0) {
-    await supabaseAdmin
-      .from("payments")
-      .update({ status: "failed", result_desc: cb.ResultDesc ?? "Failed" })
-      .eq("id", payment.id);
-    return accepted;
-  }
+  if (!payment) return accepted;
 
   const items = cb.CallbackMetadata?.Item ?? [];
   const get = (name: string) => items.find((i) => i.Name === name)?.Value;
   const receipt = String(get("MpesaReceiptNumber") ?? "");
   const paidAmount = Number(get("Amount") ?? 0);
 
+  // The verify route may have confirmed first without a receipt. Add it now.
+  if (payment.status === "success") {
+    if (!payment.mpesa_receipt && receipt && cb.ResultCode === 0) {
+      await supabaseAdmin.from("payments").update({ mpesa_receipt: receipt }).eq("id", payment.id);
+    }
+    return accepted;
+  }
+  if (payment.status !== "pending") return accepted;
+
+  if (cb.ResultCode !== 0) {
+    await markPaymentFailed(payment.id, cb.ResultDesc ?? "Failed");
+    return accepted;
+  }
+
   if (!receipt || paidAmount < Number(payment.amount)) {
-    await supabaseAdmin
-      .from("payments")
-      .update({ status: "failed", result_desc: "Amount or receipt mismatch, review manually" })
-      .eq("id", payment.id);
+    await markPaymentFailed(payment.id, "Amount or receipt mismatch, review manually");
     return accepted;
   }
 
-  const { error: payErr } = await supabaseAdmin
-    .from("payments")
-    .update({ status: "success", mpesa_receipt: receipt, result_desc: cb.ResultDesc ?? "Success" })
-    .eq("id", payment.id)
-    .eq("status", "pending");
-  if (payErr) {
-    console.error("Payment update failed", payErr);
-    return accepted;
-  }
-
-  const total = Number(payment.amount);
-  const commission = Math.round(total * COMMISSION_RATE * 100) / 100;
-
-  await supabaseAdmin
-    .from("bookings")
-    .update({
-      paid: true,
-      paid_at: new Date().toISOString(),
-      commission,
-      driver_earnings: total - commission,
-    })
-    .eq("id", payment.booking_id)
-    .eq("paid", false);
-
+  await markPaymentSuccess(payment, receipt, cb.ResultDesc ?? "Success");
   return accepted;
 }
