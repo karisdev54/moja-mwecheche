@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { randomUUID } from "crypto";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
-import { markPaymentSuccess } from "@/lib/payments";
+import { markPaymentFailed, markPaymentSuccess } from "@/lib/payments";
 
 export async function POST(req: Request) {
   // Off unless you turn it on, and never when Daraja is in production
@@ -43,11 +43,15 @@ export async function POST(req: Request) {
     .single();
 
   if (error || !payment) {
+    console.error("Test payment insert failed", error);
     return NextResponse.json({ error: "Could not record the test payment." }, { status: 500 });
   }
 
-    const done = await markPaymentSuccess(payment, "TESTMODE", "Test payment, no money moved");
+  // Each receipt must be unique, so every test payment gets its own
+  const receipt = `TEST${randomUUID().slice(0, 8).toUpperCase()}`;
+  const done = await markPaymentSuccess(payment, receipt, "Test payment, no money moved");
   if (!done) {
+    await markPaymentFailed(payment.id, "Test payment could not be completed");
     return NextResponse.json({ error: "The payment row could not be completed." }, { status: 500 });
   }
 
