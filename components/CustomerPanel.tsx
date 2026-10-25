@@ -312,6 +312,23 @@ export default function CustomerPanel({
     setPayingId(null);
   };
 
+  // TEST MODE ONLY: marks the booking paid without M-Pesa
+  const testPay = async (id: string) => {
+    setPayMsg("");
+    const { data } = await supabase.auth.getSession();
+    const res = await fetch("/api/payments/test-pay", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${data.session?.access_token}`,
+      },
+      body: JSON.stringify({ bookingId: id }),
+    });
+    const json = (await res.json()) as { error?: string };
+    setPayMsg(res.ok ? "Test payment recorded." : json.error ?? "Test payment failed.");
+    reload();
+  };
+
   return (
     <div className="space-y-3 text-gray-900">
       {!open ? (
@@ -480,6 +497,14 @@ export default function CustomerPanel({
               >
                 {payingId === b.id ? "Waiting for payment..." : `Pay KES ${b.price} with M-Pesa`}
               </button>
+              {process.env.NEXT_PUBLIC_TEST_PAYMENTS === "true" && (
+                <button
+                  onClick={() => testPay(b.id)}
+                  className="w-full bg-amber-500 text-black font-bold rounded-lg p-3"
+                >
+                  Skip payment (test mode)
+                </button>
+              )}
               {payMsg && <p className="text-sm font-semibold text-gray-900">{payMsg}</p>}
             </div>
           )}
