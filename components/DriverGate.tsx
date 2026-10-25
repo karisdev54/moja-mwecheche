@@ -31,6 +31,7 @@ export default function DriverGate({
   onRouteChange?: (r: RouteView | null) => void;
 }) {
   const [info, setInfo] = useState<DriverRow | null>(null);
+  const [online, setOnline] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -71,11 +72,11 @@ export default function DriverGate({
     return (
       <>
         <div className="flex justify-center">
-          <DriverToggle driverId={driverId} />
+          <DriverToggle driverId={driverId} onOnlineChange={setOnline} />
         </div>
         <Sheet title="My jobs">
           <DriverRating driverId={driverId} />
-          <DriverJobs driverId={driverId} onRouteChange={onRouteChange} />
+          <DriverJobs driverId={driverId} online={online} onRouteChange={onRouteChange} />
         </Sheet>
       </>
     );

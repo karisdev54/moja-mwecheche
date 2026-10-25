@@ -7,11 +7,23 @@ const HEARTBEAT_MS = 15000; // resend last position when standing still
 
 type Pos = { lat: number; lng: number };
 
-export default function DriverToggle({ driverId }: { driverId: string }) {
+export default function DriverToggle({
+  driverId,
+  onOnlineChange,
+}: {
+  driverId: string;
+  onOnlineChange?: (online: boolean) => void;
+}) {
   const [online, setOnline] = useState(false);
   const [error, setError] = useState("");
   const lastPos = useRef<Pos | null>(null);
   const lastSent = useRef(0);
+
+  // Keeps the latest callback without restarting the tracking effect
+  const cbRef = useRef(onOnlineChange);
+  useEffect(() => {
+    cbRef.current = onOnlineChange;
+  });
 
   // Make sure the driver starts offline when the page loads
   useEffect(() => {
@@ -74,6 +86,7 @@ export default function DriverToggle({ driverId }: { driverId: string }) {
             : "Could not get your location. Check that GPS is on."
         );
         setOnline(false);
+        cbRef.current?.(false); // tell the jobs list we are offline again
       },
       { enableHighAccuracy: true, maximumAge: 3000, timeout: 15000 }
     );
@@ -111,7 +124,9 @@ export default function DriverToggle({ driverId }: { driverId: string }) {
       setError("This device does not support location.");
       return;
     }
-    setOnline((o) => !o);
+    const next = !online;
+    setOnline(next);
+    onOnlineChange?.(next);
   };
 
   return (
@@ -123,8 +138,8 @@ export default function DriverToggle({ driverId }: { driverId: string }) {
       )}
       <button
         onClick={toggle}
-        className={`px-6 py-3 rounded-xl text-white shadow ${
-          online ? "bg-green-600" : "bg-gray-600"
+        className={`px-6 py-3 rounded-xl text-white font-semibold shadow ${
+          online ? "bg-green-600" : "bg-gray-700"
         }`}
       >
         {online ? "You are online (tap to go offline)" : "Go online"}

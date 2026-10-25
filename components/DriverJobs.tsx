@@ -47,9 +47,11 @@ function targetFor(j: Job): { coords: LngLat; label: string } {
 
 export default function DriverJobs({
   driverId,
+  online,
   onRouteChange,
 }: {
   driverId: string;
+  online: boolean;
   onRouteChange?: (r: RouteView | null) => void;
 }) {
   const [jobs, setJobs] = useState<Job[]>([]);
@@ -58,10 +60,12 @@ export default function DriverJobs({
   const [routeMsg, setRouteMsg] = useState("");
   const [shown, setShown] = useState<{ jobId: string; label: string; km: number; minutes: number } | null>(null);
 
+  // Used only by buttons (accept, advance), never inside an effect
   const reload = () => {
     fetchOpenJobs().then(setJobs);
   };
 
+  // Always-on refresh: bookings changing, the driver's own row changing, and a timer
   useEffect(() => {
     let active = true;
 
@@ -72,11 +76,16 @@ export default function DriverJobs({
     };
 
     refresh();
-    const timer = setInterval(refresh, 20000);
+    const timer = setInterval(refresh, 10000);
 
     const channel = supabase
       .channel("driver-jobs")
       .on("postgres_changes", { event: "*", schema: "public", table: "bookings" }, refresh)
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "drivers", filter: `id=eq.${driverId}` },
+        refresh
+      )
       .subscribe();
 
     return () => {
@@ -84,7 +93,29 @@ export default function DriverJobs({
       clearInterval(timer);
       supabase.removeChannel(channel);
     };
-  }, []);
+  }, [driverId]);
+
+  // Refresh when the driver goes online or offline, and again once their first
+  // location has been saved (the database needs it before showing nearby requests)
+  useEffect(() => {
+    let active = true;
+
+    const refresh = () => {
+      fetchOpenJobs().then((j) => {
+        if (active) setJobs(j);
+      });
+    };
+
+    const timers = [setTimeout(refresh, 0)];
+    if (online) {
+      timers.push(setTimeout(refresh, 3000), setTimeout(refresh, 8000));
+    }
+
+    return () => {
+      active = false;
+      timers.forEach(clearTimeout);
+    };
+  }, [online]);
 
   const showRoute = (j: Job) => {
     setRouteMsg("");
@@ -133,14 +164,19 @@ export default function DriverJobs({
     reload();
   };
 
+  // New requests only show while online. The driver's own jobs always show.
   const visible = jobs.filter(
-    (j) => (j.status === "requested" && !declined.includes(j.id)) || j.driver_id === driverId
+    (j) =>
+      j.driver_id === driverId ||
+      (online && j.status === "requested" && !declined.includes(j.id))
   );
 
   if (visible.length === 0) {
     return (
       <div className="bg-indigo-50 border-2 border-indigo-200 rounded-xl p-3 text-sm text-gray-900">
-        No requests within 10 km right now. Stay online and new jobs will appear here.
+        {online
+          ? "No requests within 10 km right now. Stay online and new jobs will appear here."
+          : "You are offline. Tap Go online to see job requests near you."}
       </div>
     );
   }
@@ -179,7 +215,13 @@ export default function DriverJobs({
                 disabled={busyId === j.id}
                 className="flex-1 bg-white border-2 border-indigo-300 rounded-lg p-2 font-semibold disabled:opacity-50"
               >
-                {busyId === j.id ? "Finding..." : j.status === "requested" ? "View pickup route" : t.label === "To pickup" ? "Route to pickup" : "Route to destination"}
+                {busyId === j.id
+                  ? "Finding..."
+                  : j.status === "requested"
+                    ? "View pickup route"
+                    : t.label === "To pickup"
+                      ? "Route to pickup"
+                      : "Route to destination"}
               </button>
               {j.status !== "requested" && (
                 <a
