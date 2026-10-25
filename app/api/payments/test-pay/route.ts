@@ -46,6 +46,22 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Could not record the test payment." }, { status: 500 });
   }
 
-  await markPaymentSuccess(payment, "TESTMODE", "Test payment, no money moved");
+    const done = await markPaymentSuccess(payment, "TESTMODE", "Test payment, no money moved");
+  if (!done) {
+    return NextResponse.json({ error: "The payment row could not be completed." }, { status: 500 });
+  }
+
+  const { data: check } = await supabaseAdmin
+    .from("bookings")
+    .select("paid")
+    .eq("id", booking.id)
+    .maybeSingle();
+  if (!check?.paid) {
+    return NextResponse.json(
+      { error: "Payment saved but the booking was not marked paid. Check the Vercel logs." },
+      { status: 500 }
+    );
+  }
+
   return NextResponse.json({ ok: true });
 }

@@ -23,6 +23,22 @@ function LoginForm() {
   const [info, setInfo] = useState("");
   const [loading, setLoading] = useState(false);
 
+  // Empties every field so nothing carries over between login and signup
+  const clearForm = () => {
+    setFullName("");
+    setPhone("");
+    setEmail("");
+    setPassword("");
+    setAgree(false);
+  };
+
+  const switchMode = () => {
+    setError("");
+    setInfo("");
+    clearForm();
+    setMode(mode === "login" ? "signup" : "login");
+  };
+
   const submit = async () => {
     setError("");
     setInfo("");
@@ -50,13 +66,13 @@ function LoginForm() {
     const result =
       mode === "signup"
         ? await supabase.auth.signUp({
-            email,
+            email: email.trim(),
             password,
             options: {
               data: { full_name: fullName.trim(), role, phone: phone.trim() },
             },
           })
-        : await supabase.auth.signInWithPassword({ email, password });
+        : await supabase.auth.signInWithPassword({ email: email.trim(), password });
     setLoading(false);
 
     if (result.error) {
@@ -66,8 +82,9 @@ function LoginForm() {
 
     // Email confirmation is on: no session yet, so ask them to check their email
     if (mode === "signup" && !result.data.session) {
-      setInfo("Account created. Check your email and click the confirmation link, then log in.");
+      clearForm();
       setMode("login");
+      setInfo("Account created. Check your email and click the confirmation link, then log in.");
       return;
     }
 
@@ -76,7 +93,8 @@ function LoginForm() {
 
   return (
     <main className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
-      <div className="w-full max-w-sm bg-white rounded-2xl shadow p-6 space-y-4">
+      {/* key={mode} rebuilds the fields when switching, so the browser cannot reuse old values */}
+      <div key={mode} className="w-full max-w-sm bg-white rounded-2xl shadow p-6 space-y-4">
         <h1 className="text-2xl font-bold">
           {mode === "login" ? "Welcome back" : "Create account"}
         </h1>
@@ -85,13 +103,17 @@ function LoginForm() {
           <>
             <input
               className="w-full border rounded-lg p-3"
+              name="signup-name"
+              autoComplete="off"
               placeholder="Full name"
               value={fullName}
               onChange={(e) => setFullName(e.target.value)}
             />
             <input
               className="w-full border rounded-lg p-3"
+              name="signup-phone"
               type="tel"
+              autoComplete="off"
               placeholder="Phone (e.g. 0712345678)"
               value={phone}
               onChange={(e) => setPhone(e.target.value)}
@@ -109,14 +131,18 @@ function LoginForm() {
 
         <input
           className="w-full border rounded-lg p-3"
+          name={mode === "login" ? "login-email" : "signup-email"}
           type="email"
+          autoComplete={mode === "login" ? "username" : "off"}
           placeholder="Email"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
         />
         <input
           className="w-full border rounded-lg p-3"
+          name={mode === "login" ? "login-password" : "signup-password"}
           type="password"
+          autoComplete={mode === "login" ? "current-password" : "new-password"}
           placeholder="Password (min 8 characters)"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
@@ -153,14 +179,7 @@ function LoginForm() {
           {loading ? "Please wait..." : mode === "login" ? "Log in" : "Sign up"}
         </button>
 
-        <button
-          onClick={() => {
-            setError("");
-            setInfo("");
-            setMode(mode === "login" ? "signup" : "login");
-          }}
-          className="w-full text-sm text-gray-900 underline"
-        >
+        <button onClick={switchMode} className="w-full text-sm text-gray-900 underline">
           {mode === "login" ? "No account? Sign up" : "Already have an account? Log in"}
         </button>
       </div>
