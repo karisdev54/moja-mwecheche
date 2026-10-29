@@ -1,5 +1,6 @@
 "use client";
 import { useRef, useState } from "react";
+import AvatarCropper from "@/components/AvatarCropper";
 
 export default function AvatarEditor({
   src,
@@ -15,13 +16,14 @@ export default function AvatarEditor({
   size?: number;
 }) {
   const [menu, setMenu] = useState(false);
+  const [cropFile, setCropFile] = useState<File | null>(null);
   const cam = useRef<HTMLInputElement>(null);
   const gal = useRef<HTMLInputElement>(null);
 
   const handle = (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0];
     e.target.value = ""; // lets the same photo be chosen again
-    if (f) onFile(f);
+    if (f) setCropFile(f); // crop first, then upload
   };
 
   const choose = (ref: React.RefObject<HTMLInputElement | null>) => {
@@ -101,6 +103,17 @@ export default function AvatarEditor({
             </button>
           </div>
         </div>
+      )}
+
+      {cropFile && (
+        <AvatarCropper
+          file={cropFile}
+          onCancel={() => setCropFile(null)}
+          onDone={(f) => {
+            setCropFile(null);
+            onFile(f);
+          }}
+        />
       )}
     </>
   );
