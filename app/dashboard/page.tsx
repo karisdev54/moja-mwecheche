@@ -54,7 +54,7 @@ export default function Dashboard() {
     return (
       <div className="p-6 space-y-3">
         <p className="text-red-600">Could not load: {loadError}</p>
-        <button onClick={logout} className="underline text-sm">Log out</button>
+        <button onClick={logout} className="color-blue-700 underline font-semibold text-sm">Log out</button>
       </div>
     );
   }
@@ -73,9 +73,7 @@ export default function Dashboard() {
           <p className="font-semibold text-gray-900">{profile.full_name || "User"}</p>
           <p className="text-xs font-semibold text-indigo-700 capitalize">{profile.role}</p>
         </div>
-        <button onClick={logout} className="bg-white rounded-xl shadow px-4 py-3 text-sm font-semibold text-gray-900">
-          Log out
-        </button>
+        
       </div>
 
       <div className="absolute bottom-0 left-0 right-0 z-10 flex flex-col gap-2 px-3 pt-3 pb-[calc(4.75rem+env(safe-area-inset-bottom))]">

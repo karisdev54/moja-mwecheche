@@ -3,10 +3,11 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
+import { compressImage } from "@/lib/image";
 import BottomNav from "@/components/BottomNav";
-import DriverRating from "@/components/DriverRating";
+import PhotoPicker from "@/components/PhotoPicker";
 
-const SUPPORT_EMAIL = "support@example.com"; // change to your real support email
+const SUPPORT_EMAIL = "kariukiobadiah655@gmail.com"; // change to your real support email
 
 type Me = {
   id: string;
@@ -14,6 +15,8 @@ type Me = {
   role: string;
   full_name: string;
   phone: string;
+  quote: string;
+  avatar_url: string | null;
   verification: string | null;
 };
 
@@ -22,7 +25,7 @@ async function fetchMe(): Promise<Me | null> {
   if (!u.user) return null;
   const { data: p } = await supabase
     .from("profiles")
-    .select("full_name,phone,role")
+    .select("full_name,phone,role,avatar_url,quote")
     .eq("id", u.user.id)
     .maybeSingle();
   let verification: string | null = null;
@@ -40,6 +43,8 @@ async function fetchMe(): Promise<Me | null> {
     role: p?.role ?? "customer",
     full_name: p?.full_name ?? "",
     phone: p?.phone ?? "",
+    quote: p?.quote ?? "",
+    avatar_url: p?.avatar_url ?? null,
     verification,
   };
 }
@@ -49,7 +54,11 @@ export default function ProfilePage() {
   const [me, setMe] = useState<Me | null>(null);
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
+  const [quote, setQuote] = useState("");
   const [msg, setMsg] = useState("");
+  const [avatar, setAvatar] = useState<string | null>(null);
+  const [avatarBusy, setAvatarBusy] = useState(false);
+  const [avatarMsg, setAvatarMsg] = useState("");
   const [newPass, setNewPass] = useState("");
   const [passMsg, setPassMsg] = useState("");
 
@@ -64,11 +73,47 @@ export default function ProfilePage() {
       setMe(m);
       setName(m.full_name);
       setPhone(m.phone);
+      setQuote(m.quote);
+      setAvatar(m.avatar_url);
     });
     return () => {
       active = false;
     };
   }, [router]);
+
+  const onAvatar = async (file: File) => {
+    if (!me) return;
+    setAvatarMsg("");
+    setAvatarBusy(true);
+
+    const ready = await compressImage(file, 512, 0.85);
+    if (!["image/jpeg", "image/png", "image/webp"].includes(ready.type)) {
+      setAvatarMsg("Please use a JPG, PNG or WebP photo.");
+      setAvatarBusy(false);
+      return;
+    }
+
+    const path = `${me.id}/avatar.jpg`;
+    const up = await supabase.storage
+      .from("avatars")
+      .upload(path, ready, { upsert: true, contentType: ready.type });
+    if (up.error) {
+      setAvatarMsg(up.error.message);
+      setAvatarBusy(false);
+      return;
+    }
+
+    // The ?v= part makes the phone show the new picture instead of the cached one
+    const url = `${supabase.storage.from("avatars").getPublicUrl(path).data.publicUrl}?v=${Date.now()}`;
+    const { error } = await supabase.from("profiles").update({ avatar_url: url }).eq("id", me.id);
+    setAvatarBusy(false);
+    if (error) {
+      setAvatarMsg(error.message);
+      return;
+    }
+    setAvatar(url);
+    setAvatarMsg("Picture updated ✓");
+  };
 
   const saveProfile = async () => {
     setMsg("");
@@ -76,7 +121,7 @@ export default function ProfilePage() {
     if (phone.replace(/\D/g, "").length < 9) return setMsg("Please enter a valid phone number.");
     const { error } = await supabase
       .from("profiles")
-      .update({ full_name: name.trim(), phone: phone.trim() })
+      .update({ full_name: name.trim(), phone: phone.trim(), quote: quote.trim() || null })
       .eq("id", me!.id);
     setMsg(error ? error.message : "Saved ✓");
   };
@@ -99,32 +144,46 @@ export default function ProfilePage() {
   return (
     <main className="min-h-screen bg-gray-50 p-4 pb-28">
       <div className="max-w-md mx-auto space-y-4 text-gray-900">
-        <div className="bg-white rounded-2xl shadow p-4 flex items-center gap-3">
-          <div className="w-14 h-14 rounded-full bg-indigo-600 text-white flex items-center justify-center text-2xl font-bold">
-            {(me.full_name || me.email).charAt(0).toUpperCase()}
+        <div className="bg-white rounded-2xl shadow p-4 space-y-3">
+          <div className="flex items-center gap-3">
+            {avatar ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={avatar} alt="Profile" className="w-20 h-20 rounded-full object-cover border-2 border-indigo-200" />
+            ) : (
+              <div className="w-20 h-20 rounded-full bg-indigo-600 text-white flex items-center justify-center text-3xl font-bold">
+                {(me.full_name || me.email).charAt(0).toUpperCase()}
+              </div>
+            )}
+            <div>
+              <p className="font-bold text-lg">{me.full_name || "Your name"}</p>
+              <p className="text-sm text-gray-700">{me.email}</p>
+              <p className="text-xs font-semibold text-indigo-700 capitalize">{me.role}</p>
+            </div>
           </div>
-          <div>
-            <p className="font-bold text-lg">{me.full_name || "Your name"}</p>
-            <p className="text-sm text-gray-700">{me.email}</p>
-            <p className="text-xs font-semibold text-indigo-700 capitalize">{me.role}</p>
-          </div>
+          {quote && <p className="text-sm italic text-gray-800">“{quote}”</p>}
+          <PhotoPicker facing="user" disabled={avatarBusy} onFile={onAvatar} />
+          {avatarBusy && <p className="text-sm font-semibold">Uploading...</p>}
+          {avatarMsg && <p className="text-sm font-semibold">{avatarMsg}</p>}
         </div>
 
-        {me.role === "driver" && (
-          <div className="space-y-3">
-            <DriverRating driverId={me.id} />
-            {me.verification !== "approved" && (
-              <Link href="/driver/verify" className="block bg-indigo-600 text-white font-bold rounded-xl p-4 text-center">
-                {me.verification === "pending" ? "Documents under review" : "Upload my documents"}
-              </Link>
-            )}
-          </div>
+        {me.role === "driver" && me.verification !== "approved" && (
+          <Link href="/driver/verify" className="block bg-indigo-600 text-white font-bold rounded-xl p-4 text-center">
+            {me.verification === "pending" ? "Documents under review" : "Upload my documents"}
+          </Link>
         )}
 
         <div className="bg-white rounded-2xl shadow p-4 space-y-3">
           <h2 className="font-bold">Personal details</h2>
           <input className="w-full border-2 border-indigo-200 rounded-lg p-3" placeholder="Full name" value={name} onChange={(e) => setName(e.target.value)} />
           <input className="w-full border-2 border-indigo-200 rounded-lg p-3" type="tel" placeholder="Phone" value={phone} onChange={(e) => setPhone(e.target.value)} />
+          <textarea
+            className="w-full border-2 border-indigo-200 rounded-lg p-3"
+            rows={2}
+            maxLength={140}
+            placeholder="A short line about you (optional)"
+            value={quote}
+            onChange={(e) => setQuote(e.target.value)}
+          />
           {msg && <p className="text-sm font-semibold">{msg}</p>}
           <button onClick={saveProfile} className="w-full bg-indigo-600 text-white font-bold rounded-lg p-3">Save changes</button>
         </div>
@@ -137,16 +196,11 @@ export default function ProfilePage() {
         </div>
 
         <div className="bg-white rounded-2xl shadow p-2 text-sm font-semibold">
-          {me.role === "admin" && (
-            <Link href="/admin" className="block p-3 border-b">Admin panel</Link>
-          )}
+          {me.role === "admin" && <Link href="/admin" className="block p-3 border-b">Admin panel</Link>}
           <a href={`mailto:${SUPPORT_EMAIL}`} className="block p-3 border-b">Help and support</a>
           <Link href="/terms" className="block p-3 border-b">Terms of service</Link>
           <Link href="/privacy" className="block p-3 border-b">Privacy policy</Link>
-          <a
-            href={`mailto:${SUPPORT_EMAIL}?subject=Delete my account`}
-            className="block p-3 text-red-600"
-          >
+          <a href={`mailto:${SUPPORT_EMAIL}?subject=Delete my account`} className="block p-3 text-red-600">
             Request account deletion
           </a>
         </div>

@@ -3,6 +3,8 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import BottomNav from "@/components/BottomNav";
+import DriverRating from "@/components/DriverRating";
+import RateDriver from "@/components/RateDriver";
 
 type Item = {
   id: string;
@@ -13,10 +15,13 @@ type Item = {
   price: number;
   status: string;
   paid: boolean;
+  driver_id: string | null;
   driver_earnings: number | null;
   refund_status: string;
+  my_rating: number | null;
+  review: { rating: number; comment: string | null } | null;
 };
-type Data = { role: string; items: Item[] };
+type Data = { userId: string; role: string; items: Item[] };
 
 const STATUS_STYLE: Record<string, string> = {
   requested: "bg-amber-100 text-amber-900",
@@ -43,17 +48,40 @@ async function fetchActivity(): Promise<Data | "login"> {
   const column = role === "driver" ? "driver_id" : "customer_id";
   const { data } = await supabase
     .from("bookings")
-    .select("id,task_type,scheduled_at,duration_hours,destination,price,status,paid,driver_earnings,refund_status")
+    .select("id,task_type,scheduled_at,duration_hours,destination,price,status,paid,driver_id,driver_earnings,refund_status")
     .eq(column, u.user.id)
     .order("scheduled_at", { ascending: false })
     .limit(50);
-  return { role, items: (data ?? []) as Item[] };
+  const rows = (data ?? []) as Omit<Item, "my_rating" | "review">[];
+
+  let reviews: { booking_id: string; rating: number; comment: string | null }[] = [];
+  if (rows.length > 0) {
+    const { data: r } = await supabase
+      .from("reviews")
+      .select("booking_id,rating,comment")
+      .in("booking_id", rows.map((x) => x.id));
+    reviews = (r ?? []) as typeof reviews;
+  }
+
+  return {
+    userId: u.user.id,
+    role,
+    items: rows.map((i) => {
+      const rv = reviews.find((x) => x.booking_id === i.id);
+      return {
+        ...i,
+        my_rating: role === "driver" ? null : rv?.rating ?? null,
+        review: role === "driver" && rv ? { rating: rv.rating, comment: rv.comment } : null,
+      };
+    }),
+  };
 }
 
 export default function ActivityPage() {
   const router = useRouter();
   const [data, setData] = useState<Data | null>(null);
   const [filter, setFilter] = useState(0);
+  const [tick, setTick] = useState(0);
 
   useEffect(() => {
     let active = true;
@@ -65,7 +93,7 @@ export default function ActivityPage() {
     return () => {
       active = false;
     };
-  }, [router]);
+  }, [router, tick]);
 
   if (!data) return <p className="p-6">Loading...</p>;
 
@@ -80,6 +108,8 @@ export default function ActivityPage() {
     <main className="min-h-screen bg-gray-50 p-4 pb-28">
       <div className="max-w-md mx-auto space-y-4 text-gray-900">
         <h1 className="text-2xl font-bold">Activity</h1>
+
+        {isDriver && <DriverRating driverId={data.userId} />}
 
         <div className="grid grid-cols-2 gap-3">
           <div className="bg-white rounded-2xl shadow p-4">
@@ -123,8 +153,30 @@ export default function ActivityPage() {
             <p className="font-semibold">
               KES {Number(isDriver && i.driver_earnings ? i.driver_earnings : i.price).toLocaleString()}
               {i.paid && <span className="ml-2 text-green-700">Paid ✓</span>}
-              {i.refund_status === "refunded" && <span className="ml-2 text-indigo-800">Refunded</span>}
             </p>
+
+            {i.refund_status === "needed" && (
+              <p className="font-semibold text-indigo-800">Refund requested. We will send it to your M-Pesa.</p>
+            )}
+            {i.refund_status === "refunded" && <p className="font-semibold text-green-700">Refunded ✓</p>}
+
+            {/* Customer: rate the driver, or see the rating given */}
+            {!isDriver && i.status === "completed" && i.driver_id && i.my_rating === null && (
+              <RateDriver bookingId={i.id} customerId={data.userId} onDone={() => setTick((t) => t + 1)} />
+            )}
+            {!isDriver && i.my_rating !== null && (
+              <p className="font-semibold">
+                You rated this driver <span className="text-yellow-500">{"★".repeat(i.my_rating)}</span>
+              </p>
+            )}
+
+            {/* Driver: the rating the customer gave */}
+            {isDriver && i.review && (
+              <p className="font-semibold">
+                Customer rated you <span className="text-yellow-500">{"★".repeat(i.review.rating)}</span>
+                {i.review.comment ? ` “${i.review.comment}”` : ""}
+              </p>
+            )}
           </div>
         ))}
       </div>

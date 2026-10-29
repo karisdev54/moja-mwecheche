@@ -1,7 +1,7 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { supabase } from "@/lib/supabase";
-import RateDriver from "@/components/RateDriver";
 import PlaceSearch from "@/components/PlaceSearch";
 import { fmtMinutes, getRoute, type LngLat, type Place, type RouteView } from "@/lib/mapbox";
 
@@ -17,6 +17,8 @@ const STATUS_STYLE: Record<string, string> = {
   cancelled: "bg-gray-200 text-gray-900",
   expired: "bg-red-100 text-red-900",
 };
+
+const ACTIVE = ["requested", "accepted", "in_progress"];
 
 type Booking = {
   id: string;
@@ -45,7 +47,7 @@ async function fetchMyBookings(userId: string): Promise<Booking[]> {
     )
     .eq("customer_id", userId)
     .order("created_at", { ascending: false })
-    .limit(5);
+    .limit(8);
 
   const rows = (data ?? []) as unknown as Omit<Booking, "my_rating" | "driver_avg">[];
 
@@ -329,6 +331,15 @@ export default function CustomerPanel({
     reload();
   };
 
+  // Home only shows live jobs, plus the newest expired one so "Request again" stays handy
+  const newestId = bookings[0]?.id;
+  const onHome = bookings.filter(
+    (b) => ACTIVE.includes(b.status) || (b.status === "expired" && b.id === newestId)
+  );
+  const toRate = bookings.filter(
+    (b) => b.status === "completed" && b.driver_id && b.my_rating === null
+  ).length;
+
   return (
     <div className="space-y-3 text-gray-900">
       {!open ? (
@@ -430,7 +441,13 @@ export default function CustomerPanel({
         </div>
       )}
 
-      {bookings.map((b) => (
+      {toRate > 0 && (
+        <Link href="/activity" className="block bg-amber-100 text-amber-900 font-semibold rounded-xl p-3 text-center">
+          ⭐ Rate your driver in Activity
+        </Link>
+      )}
+
+      {onHome.map((b) => (
         <div key={b.id} className="border-2 border-indigo-200 bg-indigo-50 rounded-xl p-3 text-sm text-gray-900">
           <div className="flex justify-between items-center">
             <span className="font-bold">{b.task_type}</span>
@@ -509,15 +526,6 @@ export default function CustomerPanel({
             </div>
           )}
 
-          {b.status === "completed" && b.driver_id && b.my_rating === null && (
-            <RateDriver bookingId={b.id} customerId={userId} onDone={reload} />
-          )}
-          {b.status === "completed" && b.my_rating !== null && (
-            <p className="mt-1 font-semibold">
-              You rated this driver <span className="text-yellow-500">{"★".repeat(b.my_rating)}</span>
-            </p>
-          )}
-
           {(b.status === "requested" || b.status === "accepted") && (
             <button onClick={() => cancel(b.id, b.paid)} className="text-red-600 underline mt-2 font-semibold">
               {b.paid ? "Cancel and request refund" : "Cancel"}
@@ -530,9 +538,6 @@ export default function CustomerPanel({
             <p className="mt-1 text-sm font-semibold text-indigo-800">
               Refund requested. We will send your money back to M-Pesa and text you.
             </p>
-          )}
-          {b.refund_status === "refunded" && (
-            <p className="mt-1 text-sm font-semibold text-green-700">Refunded ✓</p>
           )}
         </div>
       ))}

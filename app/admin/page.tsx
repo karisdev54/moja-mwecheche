@@ -116,7 +116,7 @@ export default function AdminPage() {
     return (
       <p className="p-6">
         Not authorized.{" "}
-        <Link href="/login" className="underline">
+        <Link href="/login" className="color-blue-700 underline font-semibold">
           Log in as admin
         </Link>
       </p>
@@ -129,10 +129,18 @@ export default function AdminPage() {
         <div className="space-y-2">
           <h1 className="text-2xl font-bold">Driver verification</h1>
           <div className="flex flex-wrap gap-4 text-sm">
-            <Link href="/admin/stats" className="underline font-semibold">Overview</Link>
-            <Link href="/admin/payouts" className="underline font-semibold">Payouts</Link>
-            <Link href="/admin/refunds" className="underline font-semibold">Refunds</Link>
-            <Link href="/dashboard" className="underline">Back to map</Link>
+            <Link href="/admin/stats" className="color-blue-700 underline font-semibold ">
+              Overview
+            </Link>
+            <Link href="/admin/payouts" className="color-blue-700 underline font-semibold ">
+              Payouts
+            </Link>
+            <Link href="/admin/refunds" className="color-blue-700 underline font-semibold ">
+              Refunds
+            </Link>
+            <Link href="/dashboard" className="color-blue-700 underline font-semibold">
+              Back to map
+            </Link>
           </div>
         </div>
 

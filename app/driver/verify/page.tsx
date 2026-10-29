@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 import { compressImage } from "@/lib/image";
+import PhotoPicker from "@/components/PhotoPicker";
 
 const DOCS = [
   { type: "national_id", label: "National ID or passport", hint: "Photo page, all four corners visible", required: true, icon: "🪪" },
@@ -52,8 +53,7 @@ export default function VerifyPage() {
     };
   }, [router]);
 
-  const choose = async (type: string, f: File | undefined) => {
-    if (!f) return;
+  const choose = async (type: string, f: File) => {
     setMsg("");
     const ready = await compressImage(f);
     if (ready.size > 5 * 1024 * 1024) {
@@ -152,37 +152,35 @@ export default function VerifyPage() {
         {DOCS.map((d) => {
           const p = picked[d.type];
           return (
-            <label
+            <div
               key={d.type}
-              className={`flex items-center gap-3 rounded-2xl border-2 p-3 cursor-pointer bg-white ${
+              className={`rounded-2xl border-2 p-3 bg-white space-y-3 ${
                 p ? "border-green-500" : "border-dashed border-indigo-300"
               }`}
             >
-              <input
-                type="file"
-                accept="image/*,application/pdf"
-                className="hidden"
-                disabled={busy}
-                onChange={(e) => choose(d.type, e.target.files?.[0])}
-              />
-              <div className="w-20 h-20 rounded-xl bg-indigo-50 flex items-center justify-center overflow-hidden shrink-0 text-3xl">
-                {p?.url ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={p.url} alt={d.label} className="w-full h-full object-cover" />
-                ) : (
-                  d.icon
-                )}
+              <div className="flex items-center gap-3">
+                <div className="w-20 h-20 rounded-xl bg-indigo-50 flex items-center justify-center overflow-hidden shrink-0 text-3xl">
+                  {p?.url ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={p.url} alt={d.label} className="w-full h-full object-cover" />
+                  ) : p ? (
+                    "📄"
+                  ) : (
+                    d.icon
+                  )}
+                </div>
+                <div className="flex-1">
+                  <p className="font-bold">
+                    {d.label} {!d.required && <span className="text-xs font-normal">(optional)</span>}
+                  </p>
+                  <p className="text-xs text-gray-700">{d.hint}</p>
+                  <p className={`text-sm font-semibold mt-1 ${p ? "text-green-700" : "text-indigo-700"}`}>
+                    {p ? "✓ Added" : "Not added yet"}
+                  </p>
+                </div>
               </div>
-              <div className="flex-1">
-                <p className="font-bold">
-                  {d.label} {!d.required && <span className="text-xs font-normal">(optional)</span>}
-                </p>
-                <p className="text-xs text-gray-700">{d.hint}</p>
-                <p className={`text-sm font-semibold mt-1 ${p ? "text-green-700" : "text-indigo-700"}`}>
-                  {p ? "✓ Added. Tap to change" : "Tap to take a photo or choose a file"}
-                </p>
-              </div>
-            </label>
+              <PhotoPicker allowPdf facing="environment" disabled={busy} onFile={(f) => choose(d.type, f)} />
+            </div>
           );
         })}
 
