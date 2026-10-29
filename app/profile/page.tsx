@@ -5,7 +5,7 @@ import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 import { compressImage } from "@/lib/image";
 import BottomNav from "@/components/BottomNav";
-import PhotoPicker from "@/components/PhotoPicker";
+import AvatarEditor from "@/components/AvatarEditor";
 
 const SUPPORT_EMAIL = "kariukiobadiah655@gmail.com"; // change to your real support email
 
@@ -144,25 +144,21 @@ export default function ProfilePage() {
   return (
     <main className="min-h-screen bg-gray-50 p-4 pb-28">
       <div className="max-w-md mx-auto space-y-4 text-gray-900">
-        <div className="bg-white rounded-2xl shadow p-4 space-y-3">
-          <div className="flex items-center gap-3">
-            {avatar ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={avatar} alt="Profile" className="w-20 h-20 rounded-full object-cover border-2 border-indigo-200" />
-            ) : (
-              <div className="w-20 h-20 rounded-full bg-indigo-600 text-white flex items-center justify-center text-3xl font-bold">
-                {(me.full_name || me.email).charAt(0).toUpperCase()}
-              </div>
-            )}
-            <div>
-              <p className="font-bold text-lg">{me.full_name || "Your name"}</p>
-              <p className="text-sm text-gray-700">{me.email}</p>
+                <div className="bg-white rounded-2xl shadow p-4 space-y-3">
+          <div className="flex items-center gap-4">
+            <AvatarEditor
+              src={avatar}
+              initial={(me.full_name || me.email).charAt(0).toUpperCase()}
+              busy={avatarBusy}
+              onFile={onAvatar}
+            />
+            <div className="min-w-0">
+              <p className="font-bold text-lg truncate">{me.full_name || "Your name"}</p>
+              <p className="text-sm text-gray-700 truncate">{me.email}</p>
               <p className="text-xs font-semibold text-indigo-700 capitalize">{me.role}</p>
             </div>
           </div>
           {quote && <p className="text-sm italic text-gray-800">“{quote}”</p>}
-          <PhotoPicker facing="user" disabled={avatarBusy} onFile={onAvatar} />
-          {avatarBusy && <p className="text-sm font-semibold">Uploading...</p>}
           {avatarMsg && <p className="text-sm font-semibold">{avatarMsg}</p>}
         </div>
 
