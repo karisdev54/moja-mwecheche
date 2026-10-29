@@ -8,6 +8,7 @@ import DriverGate from "@/components/DriverGate";
 import CustomerPanel from "@/components/CustomerPanel";
 import Sheet from "@/components/Sheet";
 import type { RouteView } from "@/lib/mapbox";
+import BottomNav from "@/components/BottomNav";
 
 type Profile = { id: string; full_name: string | null; role: string };
 
@@ -64,6 +65,7 @@ export default function Dashboard() {
     <div className="fixed top-0 left-0 w-full h-dvh overflow-hidden">
       <div className="absolute inset-0">
         <DriverMap assignedDriverId={assignedId} route={route} />
+        <BottomNav />
       </div>
 
       <div className="absolute top-0 left-0 right-0 z-10 flex items-center justify-between gap-2 px-3 pt-[max(0.75rem,env(safe-area-inset-top))]">
@@ -76,7 +78,7 @@ export default function Dashboard() {
         </button>
       </div>
 
-      <div className="absolute bottom-0 left-0 right-0 z-10 flex flex-col gap-2 px-3 pt-3 pb-[max(5rem,calc(env(safe-area-inset-bottom)+4rem))]">
+      <div className="absolute bottom-0 left-0 right-0 z-10 flex flex-col gap-2 px-3 pt-3 pb-[calc(4.75rem+env(safe-area-inset-bottom))]">
         {profile.role === "customer" && (
           <div className="w-full max-w-md mx-auto">
             <Sheet title="Book a driver">
