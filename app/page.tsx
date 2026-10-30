@@ -1,6 +1,6 @@
 import Link from "next/link";
 import AutoRedirect from "@/components/AutoRedirect";
-import InstallButton from "@/components/installButton";
+import InstallButton from "@/components/InstallButton";
 
 const STEPS = [
   { n: "1", title: "Tell us the task", text: "Airport transfer, wedding, business trip or an errand. Pick a date, time and duration." },
