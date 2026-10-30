@@ -1,6 +1,4 @@
-import type { Metadata } from "next";
-import type { Viewport } from "next";
-
+import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 
@@ -15,10 +13,15 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "KEY AND GO",        // change to your real app name
+  title: "KEY AND GO",
   description: "Hire a verified driver for any task or occasion.",
-  appleWebApp: { capable: true, title: "Driver Hire", statusBarStyle: "default" },
-  icons: { apple: "/icon-192.png" },
+  applicationName: "KEY AND GO",
+  appleWebApp: { capable: true, title: "KEY AND GO", statusBarStyle: "default" },
+  icons: {
+    icon: "/icon-192.png",
+    apple: "/apple-touch-icon.png",
+  },
+  formatDetection: { telephone: false },
 };
 
 export const viewport: Viewport = {

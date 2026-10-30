@@ -1,5 +1,6 @@
 import Link from "next/link";
 import AutoRedirect from "@/components/AutoRedirect";
+import InstallButton from "@/components/installButton";
 
 const STEPS = [
   { n: "1", title: "Tell us the task", text: "Airport transfer, wedding, business trip or an errand. Pick a date, time and duration." },
@@ -34,6 +35,7 @@ export default function Home() {
         <p className="text-sm text-gray-700">
           Already have an account? <Link href="/login" className="bg-black text-white rounded-xl px-6 py-4 font-semibold">Log in</Link>
         </p>
+        <InstallButton />
       </section>
 
       <section className="px-4 py-10 max-w-3xl mx-auto">

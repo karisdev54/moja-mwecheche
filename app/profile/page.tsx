@@ -6,6 +6,7 @@ import { supabase } from "@/lib/supabase";
 import BottomNav from "@/components/BottomNav";
 import AvatarEditor from "@/components/AvatarEditor";
 import PasswordChange from "@/components/PasswordChange";
+import InstallButton from "@/components/installButton";
 
 const SUPPORT_EMAIL = "kariukiobadiah655@gmail.com"; // change to your real support email
 
@@ -185,6 +186,7 @@ export default function ProfilePage() {
             Save changes
           </button>
         </div>
+        <InstallButton />
 
         <PasswordChange email={me.email} />
 
