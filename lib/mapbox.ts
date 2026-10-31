@@ -3,7 +3,7 @@ const TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN as string;
 export type LngLat = [number, number];
 export type Place = { name: string; address: string; coords: LngLat };
 export type RouteInfo = { geometry: LngLat[]; km: number; minutes: number };
-export type RouteView = { geometry: LngLat[]; from: LngLat; to: LngLat };
+export type RouteView = { geometry: LngLat[]; from: LngLat; to: LngLat; follow?: boolean };
 
 export function fmtMinutes(m: number): string {
   if (m < 60) return `${m} min`;
@@ -64,6 +64,57 @@ export async function getRoute(from: LngLat, to: LngLat): Promise<RouteInfo | nu
       geometry: r.geometry.coordinates,
       km: Math.round(r.distance / 100) / 10,
       minutes: Math.max(1, Math.round(r.duration / 60)),
+    };
+  } catch {
+    return null;
+  }
+}
+
+export type RouteSteps = RouteInfo & {
+  instruction: string;
+  type?: string;
+  modifier?: string;
+  meters: number; // distance to the next turn
+};
+
+export async function getRouteSteps(from: LngLat, to: LngLat): Promise<RouteSteps | null> {
+  const params = new URLSearchParams({
+    geometries: "geojson",
+    overview: "full",
+    steps: "true",
+    language: "en",
+    access_token: TOKEN,
+  });
+  const url = `https://api.mapbox.com/directions/v5/mapbox/driving-traffic/${from[0]},${from[1]};${to[0]},${to[1]}?${params}`;
+  try {
+    const res = await fetch(url);
+    if (!res.ok) return null;
+    const json = (await res.json()) as {
+      routes?: {
+        distance: number;
+        duration: number;
+        geometry: { coordinates: LngLat[] };
+        legs: {
+          steps: {
+            distance: number;
+            maneuver: { instruction: string; type: string; modifier?: string };
+          }[];
+        }[];
+      }[];
+    };
+    const r = json.routes?.[0];
+    const steps = r?.legs?.[0]?.steps ?? [];
+    if (!r || steps.length === 0) return null;
+    // steps[0] is "head north"; steps[1] is the next turn, and steps[0].distance is how far away it is
+    const next = steps[1] ?? steps[0];
+    return {
+      geometry: r.geometry.coordinates,
+      km: Math.round(r.distance / 100) / 10,
+      minutes: Math.max(1, Math.round(r.duration / 60)),
+      instruction: next.maneuver.instruction,
+      type: next.maneuver.type,
+      modifier: next.maneuver.modifier,
+      meters: steps[0].distance,
     };
   } catch {
     return null;

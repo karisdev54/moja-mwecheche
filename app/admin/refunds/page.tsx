@@ -95,7 +95,7 @@ export default function RefundsPage() {
     fetchRefunds().then(setState);
   };
 
-  if (!state) return <p className="p-6">Loading...</p>;
+  if (!state) return <Loader full />;
   if (!state.allowed) {
     return (
       <p className="p-6">

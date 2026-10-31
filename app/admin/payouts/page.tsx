@@ -110,7 +110,7 @@ export default function PayoutsPage() {
     fetchAll().then(setState);
   };
 
-  if (!state) return <p className="p-6">Loading...</p>;
+  if (!state) return <Loader full />;
   if (!state.allowed) {
     return (
       <p className="p-6">

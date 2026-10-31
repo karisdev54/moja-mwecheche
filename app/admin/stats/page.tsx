@@ -93,7 +93,7 @@ export default function AdminStatsPage() {
           ))}
         </div>
 
-        {loading && <p className="text-gray-700">Loading...</p>}
+        {loading && <Loader label="Loading stats" />}
 
         {!loading && result?.error && (
           <p className="text-red-600">

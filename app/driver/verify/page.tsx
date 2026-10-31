@@ -5,6 +5,7 @@ import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 import { compressImage } from "@/lib/image";
 import PhotoPicker from "@/components/PhotoPicker";
+import Loader from "@/components/Loader";
 
 const DOCS = [
   { type: "national_id", label: "National ID or passport", hint: "Photo page, all four corners visible", required: true, icon: "🪪" },
@@ -111,7 +112,7 @@ export default function VerifyPage() {
     router.replace("/dashboard");
   };
 
-  if (!loaded) return <p className="p-6">Loading...</p>;
+  if (!loaded) return <Loader full />;
 
   if (status === "pending") {
     return (

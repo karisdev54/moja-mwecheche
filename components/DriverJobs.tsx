@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { fmtMinutes, getRoute, type LngLat, type RouteView } from "@/lib/mapbox";
+import Guidance from "@/components/Guidance";
 
 type Job = {
   id: string;
@@ -59,6 +60,7 @@ export default function DriverJobs({
   const [busyId, setBusyId] = useState<string | null>(null);
   const [routeMsg, setRouteMsg] = useState("");
   const [shown, setShown] = useState<{ jobId: string; label: string; km: number; minutes: number } | null>(null);
+  const [guideId, setGuideId] = useState<string | null>(null);
 
   // Used only by buttons (accept, advance), never inside an effect
   const reload = () => {
@@ -159,9 +161,34 @@ export default function DriverJobs({
   };
 
   const advance = async (id: string, status: string) => {
-    await supabase.from("bookings").update({ status }).eq("id", id).eq("driver_id", driverId);
-    if (status === "completed") clearRoute();
+    const { error } = await supabase
+      .from("bookings")
+      .update({ status })
+      .eq("id", id)
+      .eq("driver_id", driverId);
+
+    if (error) {
+      alert(error.message);
+      reload();
+      return;
+    }
+
+    if (status === "completed") {
+      clearRoute();
+      setGuideId(null);
+    }
+    if (status === "in_progress") {
+      // Starting the job: guide to the destination, if the customer set one
+      const j = jobs.find((x) => x.id === id);
+      clearRoute();
+      setGuideId(j && j.dest_lat !== null && j.dest_lng !== null ? id : null);
+    }
     reload();
+  };
+
+  const toggleGuide = (id: string) => {
+    clearRoute();
+    setGuideId((cur) => (cur === id ? null : id));
   };
 
   // New requests only show while online. The driver's own jobs always show.
@@ -170,6 +197,17 @@ export default function DriverJobs({
       j.driver_id === driverId ||
       (online && j.status === "requested" && !declined.includes(j.id))
   );
+
+  // Guidance only runs for this driver's own accepted or in-progress job
+  const guideJob = guideId
+    ? jobs.find(
+        (j) =>
+          j.id === guideId &&
+          j.driver_id === driverId &&
+          (j.status === "accepted" || j.status === "in_progress")
+      )
+    : undefined;
+  const guideTarget = guideJob ? targetFor(guideJob) : null;
 
   if (visible.length === 0) {
     return (
@@ -183,9 +221,20 @@ export default function DriverJobs({
 
   return (
     <div className="space-y-3">
+      {guideJob && guideTarget && (
+        <Guidance
+          toLng={guideTarget.coords[0]}
+          toLat={guideTarget.coords[1]}
+          label={guideTarget.label}
+          onRoute={onRouteChange}
+          onStop={() => setGuideId(null)}
+        />
+      )}
+
       {visible.map((j) => {
         const t = targetFor(j);
         const navUrl = `https://www.google.com/maps/dir/?api=1&destination=${t.coords[1]},${t.coords[0]}&travelmode=driving`;
+        const guiding = guideId === j.id;
         return (
           <div key={j.id} className="border-2 border-indigo-200 bg-indigo-50 rounded-xl p-3 text-sm text-gray-900">
             <div className="flex justify-between">
@@ -212,7 +261,7 @@ export default function DriverJobs({
             <div className="flex gap-2 mt-2">
               <button
                 onClick={() => showRoute(j)}
-                disabled={busyId === j.id}
+                disabled={busyId === j.id || guiding}
                 className="flex-1 bg-white border-2 border-indigo-300 rounded-lg p-2 font-semibold disabled:opacity-50"
               >
                 {busyId === j.id
@@ -234,6 +283,20 @@ export default function DriverJobs({
                 </a>
               )}
             </div>
+
+            {j.status !== "requested" && (
+              <button
+                onClick={() => toggleGuide(j.id)}
+                className={`w-full mt-2 font-bold rounded-lg p-3 ${
+                  guiding
+                    ? "bg-white border-2 border-red-300 text-red-700"
+                    : "bg-indigo-600 text-white"
+                }`}
+              >
+                {guiding ? "Stop guidance" : "🧭 Guide me"}
+              </button>
+            )}
+
             {shown?.jobId === j.id && (
               <button onClick={clearRoute} className="text-xs underline mt-1">Clear route</button>
             )}

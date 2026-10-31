@@ -139,7 +139,7 @@ export default function DriverToggle({
       <button
         onClick={toggle}
         className={`px-6 py-3 rounded-xl text-white font-semibold shadow ${
-          online ? "bg-green-600" : "bg-gray-700"
+          online ? "bg-green-600" : "bg-slate-700"
         }`}
       >
         {online ? "You are online (tap to go offline)" : "Go online"}

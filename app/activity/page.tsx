@@ -5,6 +5,7 @@ import { supabase } from "@/lib/supabase";
 import BottomNav from "@/components/BottomNav";
 import DriverRating from "@/components/DriverRating";
 import RateDriver from "@/components/RateDriver";
+import Loader from "@/components/Loader";
 
 type Item = {
   id: string;
@@ -95,7 +96,7 @@ export default function ActivityPage() {
     };
   }, [router, tick]);
 
-  if (!data) return <p className="p-6">Loading...</p>;
+  if (!data) return <Loader full />;
 
   const isDriver = data.role === "driver";
   const done = data.items.filter((i) => i.status === "completed" && i.paid);
@@ -106,7 +107,7 @@ export default function ActivityPage() {
 
   return (
     <main className="min-h-screen bg-gray-50 p-4 pb-28">
-      <div className="max-w-md mx-auto space-y-4 text-gray-900">
+      <div className="max-w-md mx-auto space-y-4 text-gray-900 stagger">
         <h1 className="text-2xl font-bold">Activity</h1>
 
         {isDriver && <DriverRating driverId={data.userId} />}

@@ -9,6 +9,7 @@ import CustomerPanel from "@/components/CustomerPanel";
 import Sheet from "@/components/Sheet";
 import type { RouteView } from "@/lib/mapbox";
 import BottomNav from "@/components/BottomNav";
+import Loader from "@/components/Loader";
 
 type Profile = { id: string; full_name: string | null; role: string };
 
@@ -23,16 +24,18 @@ export default function Dashboard() {
     let active = true;
 
     const load = async () => {
-      const { data: userData } = await supabase.auth.getUser();
-      if (!userData.user) {
-        router.replace("/login");
+                const { data: s } = await supabase.auth.getSession();
+      if (!s.session) {
+        router.replace("/");
         return;
       }
+      const userId = s.session.user.id;
       const { data, error } = await supabase
         .from("profiles")
         .select("id, full_name, role")
-        .eq("id", userData.user.id)
+        .eq("id", userId)
         .maybeSingle();
+
       if (!active) return;
       if (error) setLoadError(error.message);
       else if (!data) setLoadError("No profile found for this account. Log out and sign up again.");
@@ -59,7 +62,7 @@ export default function Dashboard() {
     );
   }
 
-  if (!profile) return <p className="p-6">Loading...</p>;
+  if (!profile) return <Loader full />;
 
   return (
     <div className="fixed top-0 left-0 w-full h-dvh overflow-hidden">

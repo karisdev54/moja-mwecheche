@@ -7,6 +7,8 @@ import BottomNav from "@/components/BottomNav";
 import AvatarEditor from "@/components/AvatarEditor";
 import PasswordChange from "@/components/PasswordChange";
 import InstallButton from "@/components/InstallButton";
+import ThemeToggle from "@/components/ThemeToggle";
+import Loader from "@/components/Loader";
 
 const SUPPORT_EMAIL = "kariukiobadiah655@gmail.com"; // change to your real support email
 
@@ -129,11 +131,11 @@ export default function ProfilePage() {
     router.replace("/login");
   };
 
-  if (!me) return <p className="p-6">Loading...</p>;
+  if (!me) return <Loader full />;
 
   return (
     <main className="min-h-screen bg-gray-50 p-4 pb-28">
-      <div className="max-w-md mx-auto space-y-4 text-gray-900">
+      <div className="max-w-md mx-auto space-y-4 text-gray-900 stagger">
         <div className="bg-white rounded-2xl shadow p-4 space-y-3">
           <div className="flex items-center gap-4">
             <AvatarEditor
@@ -186,6 +188,7 @@ export default function ProfilePage() {
             Save changes
           </button>
         </div>
+        <ThemeToggle />
         <InstallButton />
 
         <PasswordChange email={me.email} />

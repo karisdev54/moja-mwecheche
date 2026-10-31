@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
+import Loader from "@/components/Loader";
 
 type DocLink = { id: string; doc_type: string; url: string };
 type PendingDriver = {
@@ -110,7 +111,7 @@ export default function AdminPage() {
     fetchAdminData().then(setState);
   };
 
-  if (!state) return <p className="p-6">Loading...</p>;
+  if (!state) return <Loader full />;
 
   if (!state.allowed) {
     return (

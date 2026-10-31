@@ -4,8 +4,12 @@ import mapboxgl from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
 import { supabase } from "@/lib/supabase";
 import type { RouteView } from "@/lib/mapbox";
+import { useTheme } from "@/lib/theme";
 
 const STALE_MS = 60000;
+
+const styleFor = (t: string) =>
+  t === "dark" ? "mapbox://styles/mapbox/dark-v11" : "mapbox://styles/mapbox/streets-v12";
 
 type Driver = {
   id: string;
@@ -23,10 +27,15 @@ export default function DriverMap({
   route?: RouteView | null;
 }) {
   const container = useRef<HTMLDivElement>(null);
+  const mapRef = useRef<mapboxgl.Map | null>(null);
+  const styleRef = useRef("");
   const assignedRef = useRef<string | null>(assignedDriverId);
   const routeRef = useRef<RouteView | null>(route);
   const redrawRef = useRef<() => void>(() => {});
   const drawRouteRef = useRef<() => void>(() => {});
+
+  // Hooks must be called here, at the top of the component, never inside an effect
+  const theme = useTheme();
 
   useEffect(() => {
     if (!container.current) return;
@@ -46,43 +55,57 @@ export default function DriverMap({
 
     mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN as string;
 
+    const initialStyle = styleFor(document.documentElement.dataset.theme ?? "light");
+    styleRef.current = initialStyle;
+
     const map = new mapboxgl.Map({
       container: container.current,
-      style: "mapbox://styles/mapbox/streets-v12",
+      style: initialStyle,
       center: [36.8219, -1.2921],
       zoom: 12,
     });
+    mapRef.current = map;
 
     // Route line and destination pin
     const drawRoute = () => {
       if (cancelled || !loaded) return;
       const r = routeRef.current;
-      const data: GeoJSON.FeatureCollection = {
-        type: "FeatureCollection",
+      const data = {
+        type: "FeatureCollection" as const,
         features: r
-          ? [{ type: "Feature", properties: {}, geometry: { type: "LineString", coordinates: r.geometry } }]
+          ? [
+              {
+                type: "Feature" as const,
+                properties: {},
+                geometry: { type: "LineString" as const, coordinates: r.geometry },
+              },
+            ]
           : [],
       };
 
-      const src = map.getSource("route") as mapboxgl.GeoJSONSource | undefined;
-      if (src) {
-        src.setData(data);
-      } else {
-        map.addSource("route", { type: "geojson", data });
-        map.addLayer({
-          id: "route-casing",
-          type: "line",
-          source: "route",
-          layout: { "line-join": "round", "line-cap": "round" },
-          paint: { "line-color": "#ffffff", "line-width": 9 },
-        });
-        map.addLayer({
-          id: "route-line",
-          type: "line",
-          source: "route",
-          layout: { "line-join": "round", "line-cap": "round" },
-          paint: { "line-color": "#4338ca", "line-width": 5 },
-        });
+      try {
+        const src = map.getSource("route") as mapboxgl.GeoJSONSource | undefined;
+        if (src) {
+          src.setData(data);
+        } else {
+          map.addSource("route", { type: "geojson", data });
+          map.addLayer({
+            id: "route-casing",
+            type: "line",
+            source: "route",
+            layout: { "line-join": "round", "line-cap": "round" },
+            paint: { "line-color": "#ffffff", "line-width": 9 },
+          });
+          map.addLayer({
+            id: "route-line",
+            type: "line",
+            source: "route",
+            layout: { "line-join": "round", "line-cap": "round" },
+            paint: { "line-color": "#4338ca", "line-width": 5 },
+          });
+        }
+      } catch {
+        return; // the map style is switching; it redraws itself when ready
       }
 
       destMarker?.remove();
@@ -90,6 +113,13 @@ export default function DriverMap({
       if (!r) return;
 
       destMarker = new mapboxgl.Marker({ color: "#f59e0b" }).setLngLat(r.to).addTo(map);
+
+      // Guidance mode: stay on the driver instead of fitting the whole route
+      if (r.follow) {
+        map.easeTo({ center: r.from, zoom: Math.max(map.getZoom(), 15.5), duration: 900 });
+        return;
+      }
+
       const bounds = new mapboxgl.LngLatBounds(r.from, r.from);
       r.geometry.forEach((c) => bounds.extend(c));
       map.fitBounds(bounds, {
@@ -217,6 +247,7 @@ export default function DriverMap({
       supabase.removeChannel(channel);
       destMarker?.remove();
       Object.keys(markers).forEach((id) => markers[id].remove());
+      mapRef.current = null;
       map.remove();
     };
   }, []);
@@ -230,6 +261,17 @@ export default function DriverMap({
     routeRef.current = route;
     drawRouteRef.current();
   }, [route]);
+
+  // Switch the map between light and dark when the theme changes
+  useEffect(() => {
+    const m = mapRef.current;
+    const next = styleFor(theme);
+    if (!m || styleRef.current === next) return;
+    styleRef.current = next;
+    m.setStyle(next);
+    // A new style wipes the route layers, so draw them again once it has loaded
+    m.once("style.load", () => drawRouteRef.current());
+  }, [theme]);
 
   return <div ref={container} className="h-full w-full" />;
 }

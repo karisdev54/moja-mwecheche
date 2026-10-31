@@ -7,6 +7,7 @@ import DriverJobs from "@/components/DriverJobs";
 import DriverRating from "@/components/DriverRating";
 import Sheet from "@/components/Sheet";
 import type { RouteView } from "@/lib/mapbox";
+import Loader from "@/components/Loader";
 
 type DriverRow = {
   is_verified: boolean;
@@ -65,7 +66,7 @@ export default function DriverGate({
   }, [driverId]);
 
   if (!info) {
-    return <div className="bg-white rounded-2xl shadow p-4 text-sm text-gray-900">Loading...</div>;
+    return <Loader label="Loading" />;
   }
 
   if (info.is_verified) {
