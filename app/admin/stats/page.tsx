@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
+import Loader from "@/components/Loader";
 
 type Stats = {
   bookings_total: number;
