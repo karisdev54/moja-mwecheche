@@ -120,3 +120,91 @@ export async function getRouteSteps(from: LngLat, to: LngLat): Promise<RouteStep
     return null;
   }
 }
+
+export type Suggestion = { id: string; name: string; address: string; kind: string };
+
+// Step 1: suggestions while typing (landmarks, addresses, streets, areas, towns)
+export async function suggestPlaces(query: string, session: string, near?: LngLat): Promise<Suggestion[]> {
+  const q = query.trim();
+  if (q.length < 3) return [];
+  const params = new URLSearchParams({
+    q,
+    access_token: TOKEN,
+    session_token: session,
+    country: "ke",
+    language: "en",
+    limit: "8",
+    types: "poi,address,street,neighborhood,locality,place",
+  });
+  if (near) params.set("proximity", `${near[0]},${near[1]}`);
+
+  try {
+    const res = await fetch(`https://api.mapbox.com/search/searchbox/v1/suggest?${params}`);
+    if (!res.ok) return [];
+    const json = (await res.json()) as {
+      suggestions?: {
+        name: string;
+        mapbox_id: string;
+        feature_type: string;
+        full_address?: string;
+        address?: string;
+        place_formatted?: string;
+      }[];
+    };
+    return (json.suggestions ?? []).map((s) => ({
+      id: s.mapbox_id,
+      name: s.name,
+      address: s.full_address ?? s.place_formatted ?? s.address ?? "",
+      kind: s.feature_type,
+    }));
+  } catch {
+    return [];
+  }
+}
+
+// Step 2: the exact coordinates of the chosen suggestion
+export async function retrievePlace(id: string, session: string): Promise<Place | null> {
+  const params = new URLSearchParams({ access_token: TOKEN, session_token: session });
+  try {
+    const res = await fetch(`https://api.mapbox.com/search/searchbox/v1/retrieve/${encodeURIComponent(id)}?${params}`);
+    if (!res.ok) return null;
+    const json = (await res.json()) as {
+      features?: {
+        geometry: { coordinates: number[] };
+        properties: { name: string; feature_type: string; full_address?: string; place_formatted?: string };
+      }[];
+    };
+    const f = json.features?.[0];
+    if (!f) return null;
+    const p = f.properties;
+    const base = p.full_address ?? p.place_formatted ?? "";
+    const address =
+      p.feature_type === "poi" && !base.startsWith(p.name) ? `${p.name}, ${base}` : base || p.name;
+    return { name: p.name, address, coords: [f.geometry.coordinates[0], f.geometry.coordinates[1]] };
+  } catch {
+    return null;
+  }
+}
+
+// The address under a pin
+export async function reverseGeocode(lng: number, lat: number): Promise<string> {
+  const fallback = `Pinned location (${lat.toFixed(5)}, ${lng.toFixed(5)})`;
+  const params = new URLSearchParams({
+    longitude: String(lng),
+    latitude: String(lat),
+    access_token: TOKEN,
+    language: "en",
+  });
+  try {
+    const res = await fetch(`https://api.mapbox.com/search/geocode/v6/reverse?${params}`);
+    if (!res.ok) return fallback;
+    const json = (await res.json()) as {
+      features?: { properties: { full_address?: string; name?: string; place_formatted?: string } }[];
+    };
+    const p = json.features?.[0]?.properties;
+    if (!p) return fallback;
+    return p.full_address ?? ([p.name, p.place_formatted].filter(Boolean).join(", ") || fallback);
+  } catch {
+    return fallback;
+  }
+}

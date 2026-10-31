@@ -4,6 +4,7 @@ import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 import PlaceSearch from "@/components/PlaceSearch";
 import { fmtMinutes, getRoute, type LngLat, type Place, type RouteView } from "@/lib/mapbox";
+import MapPicker from "@/components/MapPicker";
 
 const HOURLY_RATE = 1000; // KES per hour, keep in sync with hourly_rate in the bookings_guard SQL
 const TASKS = ["Airport transfer", "Wedding / event", "Business trip", "Errand / delivery", "Other"];
@@ -105,7 +106,7 @@ export default function CustomerPanel({
   const [payingId, setPayingId] = useState<string | null>(null);
   const [payMsg, setPayMsg] = useState("");
   const [nearby, setNearby] = useState<number | null>(null);
-
+  const [picking, setPicking] = useState(false);
   const hoursNum = Number(hoursText);
   const hoursValid = hoursText.trim() !== "" && hoursNum >= 0.5 && hoursNum <= 72;
   const estimate = hoursValid ? Math.round(hoursNum * HOURLY_RATE) : 0;
@@ -404,6 +405,13 @@ export default function CustomerPanel({
               onTextChange={onDestText}
               onPick={pickDestination}
             />
+                        <button
+              type="button"
+              onClick={() => setPicking(true)}
+              className="mt-2 w-full bg-white border-2 border-indigo-300 font-semibold rounded-lg p-3"
+            >
+              📍 Choose on the map
+            </button>
             {routeBusy && <p className="text-sm text-indigo-800 mt-1">Finding the best route...</p>}
             {routeMsg && <p className="text-sm text-red-600 mt-1">{routeMsg}</p>}
             {routeInfo && (
@@ -541,6 +549,16 @@ export default function CustomerPanel({
           )}
         </div>
       ))}
+            {picking && (
+        <MapPicker
+          start={destCoords ?? myPos ?? undefined}
+          onCancel={() => setPicking(false)}
+          onPick={(p) => {
+            setPicking(false);
+            pickDestination(p);
+          }}
+        />
+      )}
     </div>
   );
 }

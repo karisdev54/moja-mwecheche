@@ -22,6 +22,8 @@
   --input-bg: #ffffff;
   --input-fg: #111827;
   --placeholder: #4b5563;
+  --skel-a: #e0e7ff; 
+  --skel-b: #f5f7ff;
 }
 
 /* ---------- Dark palette: remaps the grays and indigos the whole app uses ---------- */
@@ -35,6 +37,8 @@ html[data-theme="dark"] {
   --input-bg: #0f1530;
   --input-fg: #f1f5f9;
   --placeholder: #94a3c4;
+  --skel-a: #1b2340;
+  --skel-b: #2a3358;
 
   --color-gray-50: #0b1020;
   --color-gray-100: #141a2e;
@@ -192,4 +196,15 @@ button:not(:disabled):active {
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
   }
+}
+/* ---------- Skeleton loading ---------- */
+.skel {
+  border-radius: 0.75rem;
+  background: linear-gradient(90deg, var(--skel-a) 25%, var(--skel-b) 50%, var(--skel-a) 75%);
+  background-size: 200% 100%;
+  animation: skel-shimmer 1.4s ease-in-out infinite;
+}
+@keyframes skel-shimmer {
+  from { background-position: 200% 0; }
+  to { background-position: -200% 0; }
 }
