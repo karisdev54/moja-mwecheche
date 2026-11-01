@@ -208,3 +208,40 @@ button:not(:disabled):active {
   from { background-position: 200% 0; }
   to { background-position: -200% 0; }
 }
+/* Checkboxes: no stuck highlight, a clean brand colour, no tap flash on phones */
+input[type="checkbox"] {
+  accent-color: #4338ca;
+  width: 1.15rem;
+  height: 1.15rem;
+  background-color: transparent;
+}
+input[type="checkbox"]:focus {
+  outline: none;
+}
+input[type="checkbox"]:focus-visible {
+  outline: 2px solid #6366f1; /* only shows for keyboard users */
+  outline-offset: 2px;
+}
+* {
+  -webkit-tap-highlight-color: transparent;
+}
+/* ---------- Job complete celebration ---------- */
+@keyframes pop-in {
+  0% { opacity: 0; transform: scale(0.6) translateY(24px); }
+  60% { opacity: 1; transform: scale(1.04); }
+  100% { opacity: 1; transform: scale(1); }
+}
+@keyframes draw { to { stroke-dashoffset: 0; } }
+@keyframes ring-pulse {
+  0% { transform: scale(0.85); opacity: 0.6; }
+  100% { transform: scale(1.9); opacity: 0; }
+}
+@keyframes confetti-fall {
+  0% { transform: translate3d(0, -20px, 0) rotate(0deg); opacity: 1; }
+  100% { transform: translate3d(var(--dx), 105vh, 0) rotate(720deg); opacity: 0.9; }
+}
+.pop-in { animation: pop-in 0.6s cubic-bezier(0.2, 0.9, 0.3, 1.2) both; }
+.check-circle { stroke-dasharray: 166; stroke-dashoffset: 166; animation: draw 0.6s 0.25s ease-out forwards; }
+.check-tick { stroke-dasharray: 48; stroke-dashoffset: 48; animation: draw 0.4s 0.8s ease-out forwards; }
+.pulse-ring { animation: ring-pulse 1.6s 0.9s ease-out 2; }
+.confetti { position: absolute; top: -12px; width: 9px; height: 14px; border-radius: 2px; animation: confetti-fall linear forwards; }

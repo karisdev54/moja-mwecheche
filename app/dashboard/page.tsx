@@ -10,8 +10,10 @@ import Sheet from "@/components/Sheet";
 import type { RouteView } from "@/lib/mapbox";
 import BottomNav from "@/components/BottomNav";
 import Loader from "@/components/Loader";
+import UserChip from "@/components/UserChip";
+import JobCompleteWatcher from "@/components/JobCompleteWatcher";
 
-type Profile = { id: string; full_name: string | null; role: string };
+type Profile = { id: string; full_name: string | null; role: string; avatar_url: string | null; phone: string | null };
 
 export default function Dashboard() {
   const router = useRouter();
@@ -32,7 +34,7 @@ export default function Dashboard() {
       const userId = s.session.user.id;
       const { data, error } = await supabase
         .from("profiles")
-        .select("id, full_name, role")
+        .select("id, full_name, role, avatar_url, phone")
         .eq("id", userId)
         .maybeSingle();
 
@@ -69,13 +71,19 @@ export default function Dashboard() {
       <div className="absolute inset-0">
         <DriverMap assignedDriverId={assignedId} route={route} />
         <BottomNav />
+              {(profile.role === "customer" || profile.role === "driver") && (
+        <JobCompleteWatcher userId={profile.id} role={profile.role} />
+      )}
       </div>
 
       <div className="absolute top-0 left-0 right-0 z-10 flex items-center justify-between gap-2 px-3 pt-[max(0.75rem,env(safe-area-inset-top))]">
-        <div className="bg-white rounded-xl shadow px-4 py-2">
-          <p className="font-semibold text-gray-900">{profile.full_name || "User"}</p>
-          <p className="text-xs font-semibold text-indigo-700 capitalize">{profile.role}</p>
-        </div>
+                <UserChip
+          id={profile.id}
+          name={profile.full_name}
+          role={profile.role}
+          avatar={profile.avatar_url}
+          phone={profile.phone}
+        />
         
       </div>
 

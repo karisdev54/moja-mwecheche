@@ -1,10 +1,9 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
-import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 import PlaceSearch from "@/components/PlaceSearch";
-import { fmtMinutes, getRoute, type LngLat, type Place, type RouteView } from "@/lib/mapbox";
 import MapPicker from "@/components/MapPicker";
+import { fmtMinutes, getRoute, type LngLat, type Place, type RouteView } from "@/lib/mapbox";
 
 const HOURLY_RATE = 1000; // KES per hour, keep in sync with hourly_rate in the bookings_guard SQL
 const TASKS = ["Airport transfer", "Wedding / event", "Business trip", "Errand / delivery", "Other"];
@@ -21,6 +20,8 @@ const STATUS_STYLE: Record<string, string> = {
 
 const ACTIVE = ["requested", "accepted", "in_progress"];
 
+type Vehicle = "driver_car" | "customer_car";
+
 type Booking = {
   id: string;
   task_type: string;
@@ -32,53 +33,30 @@ type Booking = {
   refund_status: string;
   paid: boolean;
   driver_id: string | null;
-  driver: { full_name: string | null; phone: string | null } | null;
-  my_rating: number | null;
-  driver_avg: { avg: number; count: number } | null;
+  driver: { full_name: string | null; phone: string | null; car_details: string | null; has_car: boolean | null } | null;
   widened_at: string | null;
   route_km: number | null;
   route_min: number | null;
+  vehicle: string;
+  driver_note: string | null;
 };
+
+// Shows a message, then clears it
+function flash(set: (v: string) => void, text: string, ms = 6000) {
+  set(text);
+  setTimeout(() => set(""), ms);
+}
 
 async function fetchMyBookings(userId: string): Promise<Booking[]> {
   const { data } = await supabase
     .from("bookings")
     .select(
-      "id,task_type,scheduled_at,duration_hours,destination,price,status,paid,driver_id,refund_status,widened_at,route_km,route_min,driver:driver_id(full_name,phone)"
+      "id,task_type,scheduled_at,duration_hours,destination,price,status,paid,driver_id,refund_status,widened_at,route_km,route_min,vehicle,driver_note,driver:driver_id(full_name,phone,car_details,has_car)"
     )
     .eq("customer_id", userId)
     .order("created_at", { ascending: false })
     .limit(8);
-
-  const rows = (data ?? []) as unknown as Omit<Booking, "my_rating" | "driver_avg">[];
-
-  let mine: { booking_id: string; rating: number }[] = [];
-  if (rows.length > 0) {
-    const { data: r } = await supabase
-      .from("reviews")
-      .select("booking_id,rating")
-      .in("booking_id", rows.map((x) => x.id));
-    mine = (r ?? []) as { booking_id: string; rating: number }[];
-  }
-
-  const driverIds = [...new Set(rows.map((x) => x.driver_id).filter((x): x is string => !!x))];
-  let stats: { driver_id: string; avg_rating: number; rating_count: number }[] = [];
-  if (driverIds.length > 0) {
-    const { data: s } = await supabase
-      .from("driver_ratings")
-      .select("driver_id,avg_rating,rating_count")
-      .in("driver_id", driverIds);
-    stats = (s ?? []) as typeof stats;
-  }
-
-  return rows.map((b) => {
-    const st = stats.find((x) => x.driver_id === b.driver_id);
-    return {
-      ...b,
-      my_rating: mine.find((m) => m.booking_id === b.id)?.rating ?? null,
-      driver_avg: st ? { avg: Number(st.avg_rating), count: st.rating_count } : null,
-    };
-  });
+  return (data ?? []) as unknown as Booking[];
 }
 
 export default function CustomerPanel({
@@ -94,19 +72,26 @@ export default function CustomerPanel({
   const [task, setTask] = useState(TASKS[0]);
   const [when, setWhen] = useState("");
   const [hoursText, setHoursText] = useState("1");
+  const [vehicle, setVehicle] = useState<Vehicle>("driver_car");
+  const [hasCar, setHasCar] = useState<boolean | null>(null);
+  const [note, setNote] = useState("");
   const [destination, setDestination] = useState("");
   const [destCoords, setDestCoords] = useState<LngLat | null>(null);
   const [myPos, setMyPos] = useState<LngLat | null>(null);
   const [routeInfo, setRouteInfo] = useState<{ km: number; minutes: number } | null>(null);
   const [routeBusy, setRouteBusy] = useState(false);
   const [routeMsg, setRouteMsg] = useState("");
+  const [picking, setPicking] = useState(false);
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [msg, setMsg] = useState("");
+  const [notice, setNotice] = useState("");
+  const [sending, setSending] = useState(false);
+  const sendingRef = useRef(false);
   const [payPhone, setPayPhone] = useState("");
   const [payingId, setPayingId] = useState<string | null>(null);
   const [payMsg, setPayMsg] = useState("");
   const [nearby, setNearby] = useState<number | null>(null);
-  const [picking, setPicking] = useState(false);
+
   const hoursNum = Number(hoursText);
   const hoursValid = hoursText.trim() !== "" && hoursNum >= 0.5 && hoursNum <= 72;
   const estimate = hoursValid ? Math.round(hoursNum * HOURLY_RATE) : 0;
@@ -118,9 +103,7 @@ export default function CustomerPanel({
 
   const apply = useCallback((b: Booking[]) => {
     setBookings(b);
-    const active = b.find(
-      (x) => x.driver_id && (x.status === "accepted" || x.status === "in_progress")
-    );
+    const active = b.find((x) => x.driver_id && (x.status === "accepted" || x.status === "in_progress"));
     cbRef.current?.(active?.driver_id ?? null);
   }, []);
 
@@ -154,12 +137,39 @@ export default function CustomerPanel({
     };
   }, [userId, apply]);
 
+  // Does this customer own a car? (set in Profile, Edit)
+  useEffect(() => {
+    let active = true;
+    supabase
+      .from("profiles")
+      .select("has_car")
+      .eq("id", userId)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (active) setHasCar(data?.has_car ?? null);
+      });
+    return () => {
+      active = false;
+    };
+  }, [userId]);
+
   const resetTrip = () => {
     setDestination("");
     setDestCoords(null);
     setRouteInfo(null);
     setRouteMsg("");
     onRouteChange?.(null);
+  };
+
+  // Empties every box
+  const resetForm = () => {
+    setTask(TASKS[0]);
+    setWhen("");
+    setHoursText("1");
+    setVehicle("driver_car");
+    setNote("");
+    setMsg("");
+    resetTrip();
   };
 
   const openForm = () => {
@@ -180,7 +190,7 @@ export default function CustomerPanel({
 
   const closeForm = () => {
     setOpen(false);
-    resetTrip();
+    resetForm();
   };
 
   const rebook = (b: Booking) => {
@@ -190,7 +200,6 @@ export default function CustomerPanel({
     openForm();
   };
 
-  // Typing a new destination clears the old route
   const onDestText = (v: string) => {
     setDestination(v);
     setRouteMsg("");
@@ -201,7 +210,6 @@ export default function CustomerPanel({
     }
   };
 
-  // Picking a suggestion draws the route on the map
   const pickDestination = async (p: Place) => {
     setDestination(p.address);
     setDestCoords(p.coords);
@@ -223,15 +231,18 @@ export default function CustomerPanel({
   };
 
   const submit = () => {
+    if (sendingRef.current) return; // a second tap is ignored
     setMsg("");
-    if (!when) {
-      setMsg("Pick a date and time");
-      return;
-    }
-    if (!hoursValid) {
-      setMsg("Enter a duration between 0.5 and 72 hours.");
-      return;
-    }
+    if (!when) return setMsg("Pick a date and time");
+    if (!hoursValid) return setMsg("Enter a duration between 0.5 and 72 hours.");
+
+    sendingRef.current = true;
+    setSending(true);
+    const finish = () => {
+      sendingRef.current = false;
+      setSending(false);
+    };
+
     navigator.geolocation.getCurrentPosition(
       async (pos) => {
         const { error } = await supabase.from("bookings").insert({
@@ -239,6 +250,8 @@ export default function CustomerPanel({
           task_type: task,
           scheduled_at: new Date(when).toISOString(),
           duration_hours: hoursNum,
+          vehicle,
+          driver_note: note.trim() || null,
           pickup_lat: pos.coords.latitude,
           pickup_lng: pos.coords.longitude,
           destination: destination.trim() || null,
@@ -248,14 +261,21 @@ export default function CustomerPanel({
           route_min: routeInfo?.minutes ?? null,
           price: estimate, // preview only, the database sets the real price
         });
-        if (error) setMsg(error.message);
-        else {
-          setOpen(false);
-          resetTrip();
-          reload();
+        finish();
+        if (error) {
+          flash(setMsg, error.message);
+          return;
         }
+        setOpen(false);
+        resetForm();
+        flash(setNotice, "Request sent ✓");
+        reload();
       },
-      () => setMsg("Please allow location so the driver knows where to pick you up")
+      () => {
+        finish();
+        flash(setMsg, "Please allow location so the driver knows where to pick you up");
+      },
+      { enableHighAccuracy: true, timeout: 15000 }
     );
   };
 
@@ -281,7 +301,7 @@ export default function CustomerPanel({
       });
       const json = (await res.json()) as { message?: string; error?: string };
       if (!res.ok) {
-        setPayMsg(json.error ?? "Could not start the payment.");
+        flash(setPayMsg, json.error ?? "Could not start the payment.");
         setPayingId(null);
         return;
       }
@@ -297,20 +317,21 @@ export default function CustomerPanel({
         const vj = (await v.json()) as { state?: string; message?: string };
 
         if (vj.state === "success") {
-          setPayMsg("Payment received. Thank you!");
+          setPayPhone("");
+          flash(setPayMsg, "Payment received ✓");
           reload();
           setPayingId(null);
           return;
         }
         if (vj.state === "failed") {
-          setPayMsg(vj.message ?? "Payment did not go through. Tap Pay to try again.");
+          flash(setPayMsg, vj.message ?? "Payment did not go through. Tap Pay to try again.");
           setPayingId(null);
           return;
         }
       }
-      setPayMsg("Still waiting. If you already paid, the booking will update shortly. Otherwise tap Pay again.");
+      flash(setPayMsg, "Still waiting. If you already paid, the booking will update shortly.", 10000);
     } catch {
-      setPayMsg("Network error. Please try again.");
+      flash(setPayMsg, "Network error. Please try again.");
     }
     setPayingId(null);
   };
@@ -328,7 +349,7 @@ export default function CustomerPanel({
       body: JSON.stringify({ bookingId: id }),
     });
     const json = (await res.json()) as { error?: string };
-    setPayMsg(res.ok ? "Test payment recorded." : json.error ?? "Test payment failed.");
+    flash(setPayMsg, res.ok ? "Test payment recorded." : json.error ?? "Test payment failed.");
     reload();
   };
 
@@ -337,18 +358,19 @@ export default function CustomerPanel({
   const onHome = bookings.filter(
     (b) => ACTIVE.includes(b.status) || (b.status === "expired" && b.id === newestId)
   );
-  const toRate = bookings.filter(
-    (b) => b.status === "completed" && b.driver_id && b.my_rating === null
-  ).length;
 
   return (
     <div className="space-y-3 text-gray-900">
+      {notice && (
+        <p className="bg-green-100 text-green-900 font-semibold rounded-xl p-3 text-center">{notice}</p>
+      )}
+
       {!open ? (
         <button onClick={openForm} className="w-full bg-indigo-600 text-white font-bold rounded-xl p-4 text-lg shadow">
           🚗 Book a driver
         </button>
       ) : (
-        <div className="space-y-3 rounded-xl border-2 border-indigo-200 bg-indigo-50 p-3">
+        <fieldset disabled={sending} className="min-w-0 space-y-3 rounded-xl border-2 border-indigo-200 bg-indigo-50 p-3">
           <div>
             <p className="text-sm font-semibold mb-1">What do you need?</p>
             <select className="w-full border-2 border-indigo-200 rounded-lg p-3" value={task} onChange={(e) => setTask(e.target.value)}>
@@ -397,6 +419,37 @@ export default function CustomerPanel({
           </div>
 
           <div>
+            <p className="text-sm font-semibold mb-1">Which car?</p>
+            <div className="grid grid-cols-2 gap-2">
+              {[
+                { v: "driver_car" as const, icon: "🚕", label: "Driver brings a car" },
+                { v: "customer_car" as const, icon: "🔑", label: "Drive my car" },
+              ].map((o) => {
+                const blocked = o.v === "customer_car" && hasCar === false;
+                return (
+                  <button
+                    key={o.v}
+                    type="button"
+                    disabled={blocked}
+                    onClick={() => setVehicle(o.v)}
+                    className={`rounded-xl border-2 p-3 text-sm font-semibold text-center disabled:opacity-40 ${
+                      vehicle === o.v
+                        ? "bg-indigo-600 text-white border-indigo-600"
+                        : "bg-white text-gray-900 border-indigo-200"
+                    }`}
+                  >
+                    <span className="block text-2xl">{o.icon}</span>
+                    {o.label}
+                  </button>
+                );
+              })}
+            </div>
+            {hasCar === false && (
+              <p className="text-xs mt-1">Add your car in Profile, then Edit, to book a driver for it.</p>
+            )}
+          </div>
+
+          <div>
             <p className="text-sm font-semibold mb-1">Where to? (optional)</p>
             <PlaceSearch
               value={destination}
@@ -405,7 +458,7 @@ export default function CustomerPanel({
               onTextChange={onDestText}
               onPick={pickDestination}
             />
-                        <button
+            <button
               type="button"
               onClick={() => setPicking(true)}
               className="mt-2 w-full bg-white border-2 border-indigo-300 font-semibold rounded-lg p-3"
@@ -428,6 +481,18 @@ export default function CustomerPanel({
             )}
           </div>
 
+          <div>
+            <p className="text-sm font-semibold mb-1">Note for the driver (optional)</p>
+            <textarea
+              className="w-full border-2 border-indigo-200 rounded-lg p-3"
+              rows={2}
+              maxLength={200}
+              placeholder="Gate colour, landmark, floor, car plate..."
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+            />
+          </div>
+
           {nearby !== null && (
             <p className={`text-sm font-semibold ${nearby > 0 ? "text-green-700" : "text-red-600"}`}>
               {nearby > 0
@@ -441,18 +506,33 @@ export default function CustomerPanel({
             <span className="text-xl font-bold text-indigo-800">KES {estimate.toLocaleString()}</span>
           </div>
 
-          {msg && <p className="text-red-600 text-sm">{msg}</p>}
-          <div className="flex gap-2">
-            <button onClick={submit} className="flex-1 bg-indigo-600 text-white font-bold rounded-lg p-3">Request driver</button>
-            <button onClick={closeForm} className="flex-1 bg-white border-2 border-indigo-200 rounded-lg p-3 font-semibold">Close</button>
-          </div>
-        </div>
-      )}
+          {msg && <p className="text-red-600 text-sm font-semibold">{msg}</p>}
 
-      {toRate > 0 && (
-        <Link href="/activity" className="block bg-amber-100 text-amber-900 font-semibold rounded-xl p-3 text-center">
-          ⭐ Rate your driver in Activity
-        </Link>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={submit}
+              disabled={sending}
+              className="flex-1 bg-indigo-600 text-white font-bold rounded-lg p-3 disabled:opacity-70"
+            >
+              {sending ? (
+                <span className="inline-flex items-center justify-center gap-2">
+                  <span className="w-4 h-4 rounded-full border-2 border-white/40 border-t-white animate-spin" />
+                  Sending request...
+                </span>
+              ) : (
+                "Request driver"
+              )}
+            </button>
+            <button
+              type="button"
+              onClick={closeForm}
+              className="flex-1 bg-white border-2 border-indigo-200 rounded-lg p-3 font-semibold"
+            >
+              Close
+            </button>
+          </div>
+        </fieldset>
       )}
 
       {onHome.map((b) => (
@@ -466,6 +546,9 @@ export default function CustomerPanel({
           <p className="text-gray-700 mt-1">
             {new Date(b.scheduled_at).toLocaleString()} · {b.duration_hours}h · KES {b.price}
           </p>
+          <p className="text-xs text-gray-700">
+            {b.vehicle === "customer_car" ? "🔑 Driver uses your car" : "🚕 Driver brings a car"}
+          </p>
           {b.destination && (
             <p className="text-gray-800 mt-1">
               📍 {b.destination}
@@ -473,6 +556,7 @@ export default function CustomerPanel({
               {b.route_min ? ` · about ${fmtMinutes(b.route_min)}` : ""}
             </p>
           )}
+          {b.driver_note && <p className="text-xs italic mt-1">“{b.driver_note}”</p>}
 
           {b.status === "requested" && (
             <p className="mt-1 font-semibold text-indigo-800">
@@ -489,19 +573,17 @@ export default function CustomerPanel({
           )}
 
           {b.driver && b.status !== "cancelled" && (
-            <p className="mt-1">
-              Driver: <span className="font-semibold">{b.driver.full_name || "Assigned driver"}</span>
-              {b.driver_avg && (
-                <span className="ml-2">
-                  <span className="text-yellow-500">★</span> {b.driver_avg.avg.toFixed(1)} ({b.driver_avg.count})
-                </span>
-              )}
-              {b.driver.phone && (b.status === "accepted" || b.status === "in_progress") && (
-                <a href={`tel:${b.driver.phone}`} className="ml-2 text-blue-700 underline font-semibold">
-                  Call
-                </a>
-              )}
-            </p>
+            <div className="mt-1">
+              <p>
+                Driver: <span className="font-semibold">{b.driver.full_name || "Assigned driver"}</span>
+                {b.driver.phone && (b.status === "accepted" || b.status === "in_progress") && (
+                  <a href={`tel:${b.driver.phone}`} className="ml-2 text-blue-700 underline font-semibold">
+                    Call
+                  </a>
+                )}
+              </p>
+              {b.driver.has_car && b.driver.car_details && <p className="text-xs">🚗 {b.driver.car_details}</p>}
+            </div>
           )}
 
           {b.paid && <p className="mt-1 text-green-700 font-semibold">Paid ✓</p>}
@@ -518,7 +600,7 @@ export default function CustomerPanel({
               <button
                 onClick={() => pay(b.id)}
                 disabled={payingId === b.id}
-                className="w-full bg-green-600 text-white font-bold rounded-lg p-3 disabled:opacity-50"
+                className="w-full bg-green-600 text-white font-bold rounded-lg p-3 disabled:opacity-60"
               >
                 {payingId === b.id ? "Waiting for payment..." : `Pay KES ${b.price} with M-Pesa`}
               </button>
@@ -549,7 +631,8 @@ export default function CustomerPanel({
           )}
         </div>
       ))}
-            {picking && (
+
+      {picking && (
         <MapPicker
           start={destCoords ?? myPos ?? undefined}
           onCancel={() => setPicking(false)}

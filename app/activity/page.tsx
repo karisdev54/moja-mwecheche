@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 import BottomNav from "@/components/BottomNav";
 import DriverRating from "@/components/DriverRating";
@@ -19,6 +20,7 @@ type Item = {
   driver_id: string | null;
   driver_earnings: number | null;
   refund_status: string;
+  rating_skipped: boolean;
   my_rating: number | null;
   review: { rating: number; comment: string | null } | null;
 };
@@ -49,7 +51,7 @@ async function fetchActivity(): Promise<Data | "login"> {
   const column = role === "driver" ? "driver_id" : "customer_id";
   const { data } = await supabase
     .from("bookings")
-    .select("id,task_type,scheduled_at,duration_hours,destination,price,status,paid,driver_id,driver_earnings,refund_status")
+    .select("id,task_type,scheduled_at,duration_hours,destination,price,status,paid,driver_id,driver_earnings,refund_status,rating_skipped")
     .eq(column, u.user.id)
     .order("scheduled_at", { ascending: false })
     .limit(50);
@@ -83,6 +85,7 @@ export default function ActivityPage() {
   const [data, setData] = useState<Data | null>(null);
   const [filter, setFilter] = useState(0);
   const [tick, setTick] = useState(0);
+  const [reopen, setReopen] = useState<string[]>([]);
 
   useEffect(() => {
     let active = true;
@@ -95,6 +98,14 @@ export default function ActivityPage() {
       active = false;
     };
   }, [router, tick]);
+
+  const refresh = () => setTick((t) => t + 1);
+
+  const skip = async (id: string) => {
+    await supabase.from("bookings").update({ rating_skipped: true }).eq("id", id);
+    setReopen((r) => r.filter((x) => x !== id));
+    refresh();
+  };
 
   if (!data) return <Loader full />;
 
@@ -110,7 +121,7 @@ export default function ActivityPage() {
       <div className="max-w-md mx-auto space-y-4 text-gray-900 stagger">
         <h1 className="text-2xl font-bold">Activity</h1>
 
-        {isDriver && <DriverRating driverId={data.userId} />}
+        {isDriver && <DriverRating driverId={data.userId} showComments={false} />}
 
         <div className="grid grid-cols-2 gap-3">
           <div className="bg-white rounded-2xl shadow p-4">
@@ -161,19 +172,34 @@ export default function ActivityPage() {
             )}
             {i.refund_status === "refunded" && <p className="font-semibold text-green-700">Refunded ✓</p>}
 
-            {/* Customer: rate the driver, or see the rating given */}
-            {!isDriver && i.status === "completed" && i.driver_id && i.my_rating === null && (
-              <RateDriver bookingId={i.id} customerId={data.userId} onDone={() => setTick((t) => t + 1)} />
-            )}
-            {!isDriver && i.my_rating !== null && (
-              <p className="font-semibold">
-                You rated this driver <span className="text-yellow-500">{"★".repeat(i.my_rating)}</span>
-              </p>
-            )}
+            <Link href={`/report?booking=${i.id}`} className="inline-block text-xs underline font-semibold pt-1">
+              Report a problem
+            </Link>
 
-            {/* Driver: the rating the customer gave */}
+            {/* Rating: only here, at the bottom of a completed job */}
+            {!isDriver && i.status === "completed" && i.driver_id && (
+              i.my_rating !== null ? (
+                <p className="font-semibold pt-2 border-t">
+                  You rated this driver <span className="text-yellow-500">{"★".repeat(i.my_rating)}</span>
+                </p>
+              ) : i.rating_skipped && !reopen.includes(i.id) ? (
+                <button
+                  onClick={() => setReopen([...reopen, i.id])}
+                  className="block pt-2 text-sm underline font-semibold"
+                >
+                  Rate this driver
+                </button>
+              ) : (
+                <RateDriver
+                  bookingId={i.id}
+                  customerId={data.userId}
+                  onDone={refresh}
+                  onSkip={() => skip(i.id)}
+                />
+              )
+            )}
             {isDriver && i.review && (
-              <p className="font-semibold">
+              <p className="font-semibold pt-2 border-t">
                 Customer rated you <span className="text-yellow-500">{"★".repeat(i.review.rating)}</span>
                 {i.review.comment ? ` “${i.review.comment}”` : ""}
               </p>

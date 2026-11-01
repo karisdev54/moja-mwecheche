@@ -142,6 +142,7 @@ export default function AdminPage() {
             <Link href="/dashboard" className="color-blue-700 underline font-semibold">
               Back to map
             </Link>
+            <Link href="/admin/reports" className="underline font-semibold">Reports</Link>
           </div>
         </div>
 

@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import mapboxgl from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
 import { supabase } from "@/lib/supabase";
@@ -8,8 +8,12 @@ import { useTheme } from "@/lib/theme";
 
 const STALE_MS = 60000;
 
-const styleFor = (t: string) =>
-  t === "dark" ? "mapbox://styles/mapbox/dark-v11" : "mapbox://styles/mapbox/streets-v12";
+const styleFor = (theme: string, sat: boolean) =>
+  sat
+    ? "mapbox://styles/mapbox/satellite-streets-v12"
+    : theme === "dark"
+      ? "mapbox://styles/mapbox/dark-v11"
+      : "mapbox://styles/mapbox/streets-v12";
 
 type Driver = {
   id: string;
@@ -36,6 +40,7 @@ export default function DriverMap({
 
   // Hooks must be called here, at the top of the component, never inside an effect
   const theme = useTheme();
+  const [sat, setSat] = useState(false);
 
   useEffect(() => {
     if (!container.current) return;
@@ -55,7 +60,7 @@ export default function DriverMap({
 
     mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN as string;
 
-    const initialStyle = styleFor(document.documentElement.dataset.theme ?? "light");
+    const initialStyle = styleFor(document.documentElement.dataset.theme ?? "light", false);
     styleRef.current = initialStyle;
 
     const map = new mapboxgl.Map({
@@ -88,6 +93,8 @@ export default function DriverMap({
         if (src) {
           src.setData(data);
         } else {
+          // Bright cyan on satellite imagery, indigo on the normal map
+          const lineColor = styleRef.current.includes("satellite") ? "#22d3ee" : "#4338ca";
           map.addSource("route", { type: "geojson", data });
           map.addLayer({
             id: "route-casing",
@@ -101,7 +108,7 @@ export default function DriverMap({
             type: "line",
             source: "route",
             layout: { "line-join": "round", "line-cap": "round" },
-            paint: { "line-color": "#4338ca", "line-width": 5 },
+            paint: { "line-color": lineColor, "line-width": 5 },
           });
         }
       } catch {
@@ -262,16 +269,31 @@ export default function DriverMap({
     drawRouteRef.current();
   }, [route]);
 
-  // Switch the map between light and dark when the theme changes
+  // Switch the map between light, dark and satellite
   useEffect(() => {
     const m = mapRef.current;
-    const next = styleFor(theme);
+    const next = styleFor(theme, sat);
     if (!m || styleRef.current === next) return;
     styleRef.current = next;
     m.setStyle(next);
     // A new style wipes the route layers, so draw them again once it has loaded
     m.once("style.load", () => drawRouteRef.current());
-  }, [theme]);
+  }, [theme, sat]);
 
-  return <div ref={container} className="h-full w-full" />;
+  return (
+    <div className="relative h-full w-full">
+      <div ref={container} className="h-full w-full" />
+      {/* Hidden while driver guidance is running, because the guidance banner sits in the same spot */}
+      {!route?.follow && (
+        <button
+          onClick={() => setSat((s) => !s)}
+          aria-label={sat ? "Switch to the normal map" : "Switch to satellite view"}
+          aria-pressed={sat}
+          className="absolute right-3 top-[calc(env(safe-area-inset-top)+4.75rem)] z-10 bg-white rounded-xl shadow px-3 py-2 text-sm font-semibold"
+        >
+          {sat ? "🗺️ Map" : "🛰️ Satellite"}
+        </button>
+      )}
+    </div>
+  );
 }

@@ -15,6 +15,7 @@ type Row = {
   pickup_lng: number;
   widened_at: string | null;
   refund_status: string;
+  driver_earnings: number | null;
 };
 type Hook = {
   type: "INSERT" | "UPDATE" | "DELETE";
@@ -89,8 +90,19 @@ export async function POST(req: Request) {
     jobs.push(sendSms(driver?.phone, `Booking paid: ${n.task_type} on ${when}. You can start the job.`));
   }
 
-  if (o.status !== "completed" && n.status === "completed") {
-    jobs.push(sendSms(customer?.phone, `Your ${n.task_type} job is complete. Thank you for using our service!`));
+    if (o.status !== "completed" && n.status === "completed") {
+    jobs.push(
+      sendSms(
+        customer?.phone,
+        `Thank you for choosing KEY AND GO! Your ${n.task_type} job is complete. Please rate your driver in the app.`
+      )
+    );
+    jobs.push(
+      sendSms(
+        driver?.phone,
+        `Well done! Your ${n.task_type} job is complete. You earned KES ${Math.round(Number(n.driver_earnings ?? 0))}. Thank you for driving with KEY AND GO.`
+      )
+    );
   }
 
   if (o.status !== "cancelled" && n.status === "cancelled" && n.driver_id) {

@@ -20,6 +20,8 @@ type Job = {
   dest_lng: number | null;
   route_km: number | null;
   route_min: number | null;
+  vehicle: string; 
+  driver_note: string | null;
 };
 
 const NEXT: Record<string, { status: string; label: string }> = {
@@ -31,7 +33,7 @@ async function fetchOpenJobs(): Promise<Job[]> {
   const { data } = await supabase
     .from("bookings")
     .select(
-      "id,driver_id,task_type,scheduled_at,duration_hours,destination,price,status,paid,pickup_lat,pickup_lng,dest_lat,dest_lng,route_km,route_min"
+      "id,driver_id,task_type,scheduled_at,duration_hours,destination,price,status,paid,pickup_lat,pickup_lng,dest_lat,dest_lng,route_km,route_min,vehicle,driver_note"
     )
     .in("status", ["requested", "accepted", "in_progress"])
     .order("scheduled_at", { ascending: true });
@@ -61,6 +63,7 @@ export default function DriverJobs({
   const [routeMsg, setRouteMsg] = useState("");
   const [shown, setShown] = useState<{ jobId: string; label: string; km: number; minutes: number } | null>(null);
   const [guideId, setGuideId] = useState<string | null>(null);
+  const [hasCar, setHasCar] = useState<boolean | null>(null)
 
   // Used only by buttons (accept, advance), never inside an effect
   const reload = () => {
@@ -70,6 +73,7 @@ export default function DriverJobs({
   // Always-on refresh: bookings changing, the driver's own row changing, and a timer
   useEffect(() => {
     let active = true;
+    
 
     const refresh = () => {
       fetchOpenJobs().then((j) => {
@@ -79,6 +83,14 @@ export default function DriverJobs({
 
     refresh();
     const timer = setInterval(refresh, 10000);
+        supabase
+      .from("profiles")
+      .select("has_car")
+      .eq("id", driverId)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (active) setHasCar(data?.has_car ?? null);
+      });
 
     const channel = supabase
       .channel("driver-jobs")
@@ -195,7 +207,10 @@ export default function DriverJobs({
   const visible = jobs.filter(
     (j) =>
       j.driver_id === driverId ||
-      (online && j.status === "requested" && !declined.includes(j.id))
+            (online &&
+        j.status === "requested" &&
+        !declined.includes(j.id) &&
+        !(hasCar === false && j.vehicle === "driver_car"))
   );
 
   // Guidance only runs for this driver's own accepted or in-progress job
