@@ -34,7 +34,7 @@ export default function Dashboard() {
       const userId = s.session.user.id;
       const { data, error } = await supabase
         .from("profiles")
-        .select("id, full_name, role, avatar_url, phone")
+        .select("id, full_name, role, avatar_url")
         .eq("id", userId)
         .maybeSingle();
 
@@ -82,7 +82,7 @@ export default function Dashboard() {
           name={profile.full_name}
           role={profile.role}
           avatar={profile.avatar_url}
-          phone={profile.phone}
+          phone={profile.phone || null}
         />
         
       </div>
