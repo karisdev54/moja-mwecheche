@@ -46,3 +46,19 @@ export function friendlyDbError(msg: string, code?: string): string {
   if (/valid Kenyan phone/i.test(msg)) return "Enter a valid Kenyan number, e.g. 0712 345 678.";
   return msg;
 }
+// Number plates: letters and numbers only, 5 to 8 characters, e.g. KDA 123A
+export function normalizePlate(v: string): string | null {
+  const s = v.toUpperCase().replace(/[^A-Z0-9]/g, "");
+  return s.length >= 5 && s.length <= 8 && /[A-Z]/.test(s) && /\d/.test(s) ? s : null;
+}
+
+export function formatPlate(v: string | null | undefined): string {
+  if (!v) return "";
+  const m = v.match(/^([A-Z]{3,4})(\d{3})([A-Z]?)$/);
+  return m ? `${m[1]} ${m[2]}${m[3]}` : v;
+}
+
+export function plateProblem(v: string): string | null {
+  if (!v.trim()) return "Enter your number plate.";
+  return normalizePlate(v) ? null : "Enter a valid number plate, e.g. KDA 123A.";
+}

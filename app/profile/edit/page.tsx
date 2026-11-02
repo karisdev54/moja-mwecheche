@@ -6,7 +6,6 @@ import { supabase } from "@/lib/supabase";
 import AvatarEditor from "@/components/AvatarEditor";
 import Loader from "@/components/Loader";
 import { cleanName, friendlyDbError, nameProblem, normalizePhone } from "@/lib/validate";
-type Car = "yes" | "no" | "";
 
 export default function EditProfilePage() {
   const router = useRouter();
@@ -15,8 +14,6 @@ export default function EditProfilePage() {
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [quote, setQuote] = useState("");
-  const [car, setCar] = useState<Car>("");
-  const [carText, setCarText] = useState("");
   const [avatar, setAvatar] = useState<string | null>(null);
   const [avatarBusy, setAvatarBusy] = useState(false);
   const [avatarMsg, setAvatarMsg] = useState("");
@@ -34,7 +31,7 @@ export default function EditProfilePage() {
       }
       const { data: p } = await supabase
         .from("profiles")
-        .select("full_name,phone,quote,avatar_url,has_car,car_details,role")
+        .select("full_name,phone,quote,avatar_url,role")
         .eq("id", u.user.id)
         .maybeSingle();
       if (!active) return;
@@ -48,8 +45,6 @@ export default function EditProfilePage() {
       setPhone(p?.phone ?? "");
       setQuote(p?.quote ?? "");
       setAvatar(p?.avatar_url ?? null);
-      setCar(p?.has_car === true ? "yes" : p?.has_car === false ? "no" : "");
-      setCarText(p?.car_details ?? "");
       setLoaded(true);
     })();
     return () => {
@@ -57,7 +52,6 @@ export default function EditProfilePage() {
     };
   }, [router]);
 
-  // The cropper already gives us a 512x512 JPEG
   const onAvatar = async (file: File) => {
     if (!uid) return;
     setAvatarMsg("");
@@ -78,21 +72,17 @@ export default function EditProfilePage() {
   };
 
   const save = async () => {
-    if (!uid) return;
+    if (!uid || busy) return;
     setMsg("");
-        const nErr = nameProblem(name);
+    const nErr = nameProblem(name);
     if (nErr) return setMsg(nErr);
     const pNorm = normalizePhone(phone);
     if (!pNorm) return setMsg("Enter a valid Kenyan number, e.g. 0712 345 678.");
+
+    setBusy(true);
     const { error } = await supabase
       .from("profiles")
-      .update({
-        full_name: cleanName(name),
-        phone: pNorm,
-        quote: quote.trim() || null,
-        has_car: car === "" ? null : car === "yes",
-        car_details: car === "yes" ? carText.trim() || null : null,
-      })
+      .update({ full_name: cleanName(name), phone: pNorm, quote: quote.trim() || null })
       .eq("id", uid);
     setBusy(false);
     if (error) return setMsg(friendlyDbError(error.message, error.code));
@@ -120,47 +110,8 @@ export default function EditProfilePage() {
           <textarea className="w-full border-2 border-indigo-200 rounded-lg p-3" rows={2} maxLength={140} placeholder="A short line about you (optional)" value={quote} onChange={(e) => setQuote(e.target.value)} />
         </div>
 
-        <div className="bg-white rounded-2xl shadow p-4 space-y-3">
-          <h2 className="font-bold">Do you have a car?</h2>
-          <div className="grid grid-cols-2 gap-2">
-            {[
-              { v: "yes" as const, icon: "🚗", label: "Yes, I have a car" },
-              { v: "no" as const, icon: "🚶", label: "No car" },
-            ].map((o) => (
-              <button
-                key={o.v}
-                type="button"
-                onClick={() => setCar(o.v)}
-                className={`rounded-xl border-2 p-3 text-sm font-semibold ${
-                  car === o.v ? "bg-indigo-600 text-white border-indigo-600" : "bg-white border-indigo-200"
-                }`}
-              >
-                <span className="block text-2xl">{o.icon}</span>
-                {o.label}
-              </button>
-            ))}
-          </div>
-          {car === "yes" && (
-            <input
-              className="w-full border-2 border-indigo-200 rounded-lg p-3"
-              maxLength={80}
-              placeholder="Make, model and plate, e.g. Toyota Axio KDA 123A"
-              value={carText}
-              onChange={(e) => setCarText(e.target.value)}
-            />
-          )}
-          <p className="text-xs text-gray-700">
-            Drivers: jobs where the driver brings the car only show to drivers who have one. Customers: this lets you
-            book a driver for your own car.
-          </p>
-        </div>
-
         {msg && <p className="text-red-600 text-sm font-semibold">{msg}</p>}
-        <button
-          onClick={save}
-          disabled={busy}
-          className="w-full bg-indigo-600 text-white font-bold rounded-xl p-4 disabled:opacity-60"
-        >
+        <button onClick={save} disabled={busy} className="w-full bg-indigo-600 text-white font-bold rounded-xl p-4 disabled:opacity-60">
           {busy ? "Saving..." : "Save changes"}
         </button>
       </div>

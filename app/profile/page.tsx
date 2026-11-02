@@ -4,10 +4,14 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 import BottomNav from "@/components/BottomNav";
-import ThemeToggle from "@/components/ThemeToggle";
 import Loader from "@/components/Loader";
+import PlateBadge from "@/components/PlateBadge";
+import { useThemePref } from "@/lib/theme";
+import { exitApp } from "@/lib/exit";
+
 
 const SUPPORT_EMAIL = "kariukiobadiah655@gmail.com"; // change to your real support email
+const THEME_LABEL = { light: "Light", dark: "Dark", system: "Auto" } as const;
 
 type Me = {
   id: string;
@@ -18,6 +22,7 @@ type Me = {
   quote: string;
   avatar_url: string | null;
   has_car: boolean | null;
+  car_plate: string | null;
   car_details: string;
   verification: string | null;
 };
@@ -27,7 +32,7 @@ async function fetchMe(): Promise<Me | null> {
   if (!u.user) return null;
   const { data: p } = await supabase
     .from("profiles")
-    .select("full_name,phone,role,avatar_url,quote,has_car,car_details")
+    .select("full_name,phone,role,avatar_url,quote,has_car,car_plate,car_details")
     .eq("id", u.user.id)
     .maybeSingle();
   let verification: string | null = null;
@@ -48,6 +53,7 @@ async function fetchMe(): Promise<Me | null> {
     quote: p?.quote ?? "",
     avatar_url: p?.avatar_url ?? null,
     has_car: p?.has_car ?? null,
+    car_plate: p?.car_plate ?? null,
     car_details: p?.car_details ?? "",
     verification,
   };
@@ -56,6 +62,8 @@ async function fetchMe(): Promise<Me | null> {
 export default function ProfilePage() {
   const router = useRouter();
   const [me, setMe] = useState<Me | null>(null);
+  const [exiting, setExiting] = useState(false);
+  const themePref = useThemePref();
 
   useEffect(() => {
     let active = true;
@@ -74,10 +82,16 @@ export default function ProfilePage() {
     router.replace("/login");
   };
 
+  const exit = async () => {
+    setExiting(true);
+    const done = await exitApp();
+    if (!done) setExiting(false);
+  };
+
   if (!me) return <Loader full />;
 
   const isAdmin = me.role === "admin";
-  const row = "block p-3 border-b";
+  const row = "flex items-center justify-between p-3 border-b";
 
   return (
     <main className="min-h-screen bg-gray-50 p-4 pb-28">
@@ -99,9 +113,16 @@ export default function ProfilePage() {
               <p className="text-xs font-semibold text-indigo-700 capitalize">{me.role}</p>
             </div>
           </div>
-          {me.has_car === true && <p className="text-sm">🚗 {me.car_details || "Has a car"}</p>}
+
+          {me.has_car === true && (
+            <div className="flex items-center gap-2 flex-wrap">
+              <PlateBadge plate={me.car_plate} />
+              {me.car_details && <span className="text-sm">{me.car_details}</span>}
+            </div>
+          )}
           {me.has_car === false && <p className="text-sm">🚶 No car</p>}
           {me.quote && <p className="text-sm italic text-gray-800">“{me.quote}”</p>}
+
           {!isAdmin && (
             <Link href="/profile/edit" className="block text-center bg-indigo-600 text-white font-bold rounded-lg p-3">
               ✏️ Edit profile
@@ -115,15 +136,19 @@ export default function ProfilePage() {
           </Link>
         )}
 
-        <ThemeToggle />
-
         <div className="bg-white rounded-2xl shadow p-2 text-sm font-semibold">
-          {isAdmin && <Link href="/admin" className={row}>Admin panel</Link>}
-          {!isAdmin && <Link href="/profile/password" className={row}>Change password</Link>}
-          <Link href="/report" className={row}>Report a problem</Link>
-          <a href={`mailto:${SUPPORT_EMAIL}`} className={row}>Help and support</a>
-          <Link href="/terms" className={row}>Terms of service</Link>
-          <Link href="/privacy" className={isAdmin ? "block p-3" : row}>Privacy policy</Link>
+          {isAdmin && <Link href="/admin" className={row}><span>Admin panel</span><span>›</span></Link>}
+          <Link href="/profile/appearance" className={row}>
+            <span>Appearance</span>
+            <span className="text-indigo-700">{THEME_LABEL[themePref]} ›</span>
+          </Link>
+          {!isAdmin && <Link href="/profile/password" className={row}><span>Change password</span><span>›</span></Link>}
+          <Link href="/report" className={row}><span>Report a problem</span><span>›</span></Link>
+          <a href={`mailto:${SUPPORT_EMAIL}`} className={row}><span>Help and support</span><span>›</span></a>
+          <Link href="/terms" className={row}><span>Terms of service</span><span>›</span></Link>
+          <Link href="/privacy" className={isAdmin ? "flex items-center justify-between p-3" : row}>
+            <span>Privacy policy</span><span>›</span>
+          </Link>
           {!isAdmin && (
             <a href={`mailto:${SUPPORT_EMAIL}?subject=Delete my account`} className="block p-3 text-red-600">
               Request account deletion
@@ -133,6 +158,13 @@ export default function ProfilePage() {
 
         <button onClick={logout} className="w-full bg-white border-2 border-red-300 text-red-700 font-bold rounded-xl p-4">
           Log out
+        </button>
+        <button
+          onClick={exit}
+          disabled={exiting}
+          className="w-full bg-white border-2 border-indigo-300 font-bold rounded-xl p-4 disabled:opacity-60"
+        >
+          {exiting ? "Closing..." : "⏻ Exit app"}
         </button>
       </div>
       <BottomNav />

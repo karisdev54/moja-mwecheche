@@ -16,13 +16,14 @@ type Row = {
   widened_at: string | null;
   refund_status: string;
   driver_earnings: number | null;
+  vehicle: string;
 };
 type Hook = {
   type: "INSERT" | "UPDATE" | "DELETE";
   record: Row | null;
   old_record: Row | null;
 };
-type Person = { id: string; full_name: string | null; phone: string | null };
+type Person = { id: string; full_name: string | null; phone: string | null; car_plate: string | null; };
 
 const formatWhen = (iso: string) =>
   new Date(iso).toLocaleString("en-KE", {

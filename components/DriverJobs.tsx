@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { fmtMinutes, getRoute, type LngLat, type RouteView } from "@/lib/mapbox";
 import Guidance from "@/components/Guidance";
+import PlateBadge from "@/components/PlateBadge";
 
 type Job = {
   id: string;
@@ -22,6 +23,7 @@ type Job = {
   route_min: number | null;
   vehicle: string; 
   driver_note: string | null;
+  customer: { full_name: string | null; phone: string | null; car_plate: string | null; car_details: string | null } | null;
 };
 
 const NEXT: Record<string, { status: string; label: string }> = {
@@ -33,11 +35,11 @@ async function fetchOpenJobs(): Promise<Job[]> {
   const { data } = await supabase
     .from("bookings")
     .select(
-      "id,driver_id,task_type,scheduled_at,duration_hours,destination,price,status,paid,pickup_lat,pickup_lng,dest_lat,dest_lng,route_km,route_min,vehicle,driver_note"
+      "id,driver_id,task_type,scheduled_at,duration_hours,destination,price,status,paid,pickup_lat,pickup_lng,dest_lat,dest_lng,route_km,route_min,vehicle,driver_note,customer:customer(full_name,phone,car_plate,car_details)"
     )
     .in("status", ["requested", "accepted", "in_progress"])
     .order("scheduled_at", { ascending: true });
-  return (data ?? []) as Job[];
+  return (data ?? [])as unknown as Job[];
 }
 
 // Where the driver should be heading for this job right now
@@ -63,7 +65,7 @@ export default function DriverJobs({
   const [routeMsg, setRouteMsg] = useState("");
   const [shown, setShown] = useState<{ jobId: string; label: string; km: number; minutes: number } | null>(null);
   const [guideId, setGuideId] = useState<string | null>(null);
-  const [hasCar, setHasCar] = useState<boolean | null>(null)
+  const [hasCar, setHasCar] = useState<boolean | null>(null);
 
   // Used only by buttons (accept, advance), never inside an effect
   const reload = () => {
@@ -73,7 +75,6 @@ export default function DriverJobs({
   // Always-on refresh: bookings changing, the driver's own row changing, and a timer
   useEffect(() => {
     let active = true;
-    
 
     const refresh = () => {
       fetchOpenJobs().then((j) => {
@@ -83,7 +84,8 @@ export default function DriverJobs({
 
     refresh();
     const timer = setInterval(refresh, 10000);
-        supabase
+
+    supabase
       .from("profiles")
       .select("has_car")
       .eq("id", driverId)
@@ -207,7 +209,7 @@ export default function DriverJobs({
   const visible = jobs.filter(
     (j) =>
       j.driver_id === driverId ||
-            (online &&
+      (online &&
         j.status === "requested" &&
         !declined.includes(j.id) &&
         !(hasCar === false && j.vehicle === "driver_car"))
@@ -259,6 +261,28 @@ export default function DriverJobs({
             <p className="text-gray-700">
               {new Date(j.scheduled_at).toLocaleString()} · {j.duration_hours}h
             </p>
+            {(j.status === "accepted" || j.status === "in_progress") && j.customer && (
+              <div className="mt-2 bg-white border-2 border-indigo-200 rounded-lg p-2 text-xs space-y-1">
+                <p>
+                  👤 Customer: <b>{j.customer.full_name || "Customer"}</b>
+                  {j.customer.phone && (
+                    <a
+                      href={`tel:${j.customer.phone}`}
+                      className="ml-2 text-blue-700 underline font-semibold"
+                    >
+                      Call
+                    </a>
+                  )}
+                </p>
+                {j.vehicle === "customer_car" && j.customer.car_plate && (
+                  <div className="flex items-center gap-2">
+                    <span>🔑 Their car:</span>
+                    <PlateBadge plate={j.customer.car_plate} small />
+                    {j.customer.car_details && <span>{j.customer.car_details}</span>}
+                  </div>
+                )}
+              </div>
+            )}
             {j.destination && (
               <p className="mt-1">
                 📍 To {j.destination}

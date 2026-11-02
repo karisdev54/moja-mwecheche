@@ -4,6 +4,7 @@ import { supabase } from "@/lib/supabase";
 import PlaceSearch from "@/components/PlaceSearch";
 import MapPicker from "@/components/MapPicker";
 import { fmtMinutes, getRoute, type LngLat, type Place, type RouteView } from "@/lib/mapbox";
+import PlateBadge from "@/components/PlateBadge";
 
 const HOURLY_RATE = 1000; // KES per hour, keep in sync with hourly_rate in the bookings_guard SQL
 const TASKS = ["Airport transfer", "Wedding / event", "Business trip", "Errand / delivery", "Other"];
@@ -33,7 +34,7 @@ type Booking = {
   refund_status: string;
   paid: boolean;
   driver_id: string | null;
-  driver: { full_name: string | null; phone: string | null; car_details: string | null; has_car: boolean | null } | null;
+  driver: { full_name: string | null; phone: string | null; car_details: string | null; has_car: boolean | null; car_plate: string | null} | null;
   widened_at: string | null;
   route_km: number | null;
   route_min: number | null;
@@ -425,7 +426,7 @@ export default function CustomerPanel({
                 { v: "driver_car" as const, icon: "🚕", label: "Driver brings a car" },
                 { v: "customer_car" as const, icon: "🔑", label: "Drive my car" },
               ].map((o) => {
-                const blocked = o.v === "customer_car" && hasCar === false;
+                const blocked = o.v === "customer_car" && hasCar === true;
                 return (
                   <button
                     key={o.v}
@@ -444,8 +445,8 @@ export default function CustomerPanel({
                 );
               })}
             </div>
-            {hasCar === false && (
-              <p className="text-xs mt-1">Add your car in Profile, then Edit, to book a driver for it.</p>
+             {hasCar !== true && (
+              <p className="text-xs mt-1">You did not add a car when you registered, so “Drive my car” is off.</p>
             )}
           </div>
 
@@ -582,7 +583,14 @@ export default function CustomerPanel({
                   </a>
                 )}
               </p>
-              {b.driver.has_car && b.driver.car_details && <p className="text-xs">🚗 {b.driver.car_details}</p>}
+                            {b.vehicle === "driver_car" &&
+                b.driver.car_plate &&
+                (b.status === "accepted" || b.status === "in_progress") && (
+                  <div className="mt-2 flex items-center gap-2">
+                    <PlateBadge plate={b.driver.car_plate} />
+                    {b.driver.car_details && <span className="text-xs">{b.driver.car_details}</span>}
+                  </div>
+                )}
             </div>
           )}
 

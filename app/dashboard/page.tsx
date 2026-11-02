@@ -12,6 +12,7 @@ import BottomNav from "@/components/BottomNav";
 import Loader from "@/components/Loader";
 import UserChip from "@/components/UserChip";
 import JobCompleteWatcher from "@/components/JobCompleteWatcher";
+import AdminBell from "@/components/AdminBell";
 
 type Profile = { id: string; full_name: string | null; role: string; avatar_url: string | null; phone: string | null };
 
@@ -101,6 +102,13 @@ export default function Dashboard() {
             <DriverGate driverId={profile.id} onRouteChange={setRoute} />
           </div>
         )}
+
+                <div className="flex items-center gap-2">
+          {profile.role === "admin" && <AdminBell />}
+          <button onClick={logout} className="bg-white rounded-xl shadow px-4 py-3 text-sm font-semibold text-gray-900">
+            Log out
+          </button>
+        </div>
 
         {profile.role === "admin" && (
           <div className="flex justify-center">

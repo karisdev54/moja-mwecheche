@@ -4,13 +4,16 @@ import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 import Brand from "@/components/Brand";
+import CarFields, { emptyCar, type CarState } from "@/components/CarFields";
 import {
   cleanName,
   emailProblem,
   nameProblem,
   normalizePhone,
+  normalizePlate,
   passwordProblem,
   phoneProblem,
+  plateProblem,
 } from "@/lib/validate";
 
 function Field({
@@ -45,7 +48,14 @@ const inp = (err?: string, extra = "") =>
   } ${extra}`;
 
 type Mode = "login" | "signup" | "forgot";
-type Errs = { name?: string; phone?: string; email?: string; password?: string; agree?: string };
+type Errs = {
+  name?: string;
+  phone?: string;
+  email?: string;
+  password?: string;
+  agree?: string;
+  car?: string;
+};
 
 // Turns Supabase's technical messages into plain language
 function friendly(m: string): string {
@@ -55,7 +65,7 @@ function friendly(m: string): string {
   if (s.includes("already registered") || s.includes("already been registered"))
     return "That email already has an account. Try logging in.";
   if (s.includes("database error saving"))
-    return "We could not create your account. That phone number or email may already be registered.";
+    return "We could not create your account. That phone number, email or number plate may already be registered.";
   if (s.includes("rate limit") || s.includes("too many") || s.includes("seconds"))
     return "Too many attempts. Please wait a few minutes and try again.";
   if (s.includes("weak") || s.includes("easy to guess")) return "That password is too easy to guess. Try a longer one.";
@@ -74,6 +84,7 @@ function LoginForm() {
   const [password, setPassword] = useState("");
   const [showPw, setShowPw] = useState(false);
   const [agree, setAgree] = useState(false);
+  const [car, setCar] = useState<CarState>(emptyCar);
   const [errs, setErrs] = useState<Errs>({});
   const [error, setError] = useState(params.get("error_description") ?? "");
   const [info, setInfo] = useState("");
@@ -103,6 +114,7 @@ function LoginForm() {
     setPassword("");
     setShowPw(false);
     setAgree(false);
+    setCar(emptyCar);
     setErrs({});
   };
 
@@ -118,11 +130,19 @@ function LoginForm() {
     const next: Errs = {};
     const e = emailProblem(email);
     if (e) next.email = e;
+
     if (mode === "signup") {
       const n = nameProblem(fullName);
       if (n) next.name = n;
       const p = phoneProblem(phone);
       if (p) next.phone = p;
+
+      if (car.has === null) next.car = "Tell us if you have a car.";
+      else if (car.has) {
+        const cp = plateProblem(car.plate);
+        if (cp) next.car = cp;
+      }
+
       const pw = passwordProblem(password, false);
       if (pw) next.password = pw;
       if (!agree) next.agree = "Please accept the Terms and Privacy Policy.";
@@ -130,6 +150,7 @@ function LoginForm() {
       const pw = passwordProblem(password, true);
       if (pw) next.password = pw;
     }
+
     setErrs(next);
     return Object.keys(next).length === 0;
   };
@@ -160,7 +181,14 @@ function LoginForm() {
             email: cleanEmail,
             password,
             options: {
-              data: { full_name: cleanName(fullName), role, phone: phoneNorm },
+              data: {
+                full_name: cleanName(fullName),
+                role,
+                phone: phoneNorm,
+                has_car: car.has,
+                car_plate: car.has ? normalizePlate(car.plate) : null,
+                car_details: car.has ? car.details.trim() || null : null,
+              },
               emailRedirectTo: `${window.location.origin}/dashboard`,
             },
           })
@@ -326,6 +354,15 @@ function LoginForm() {
                 onBlur={() => phone && setErr("phone", phoneProblem(phone) ?? undefined)}
               />
             </Field>
+
+            <CarFields
+              value={car}
+              onChange={(v) => {
+                setCar(v);
+                setErr("car", undefined);
+              }}
+              error={errs.car}
+            />
           </>
         )}
 

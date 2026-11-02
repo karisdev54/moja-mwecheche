@@ -5,7 +5,8 @@ import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 import Brand from "@/components/Brand";
 import Loader from "@/components/Loader";
-import { friendlyDbError, normalizePhone } from "@/lib/validate";
+import CarFields, { emptyCar, type CarState } from "@/components/CarFields";
+import { friendlyDbError, normalizePhone, normalizePlate, phoneProblem, plateProblem } from "@/lib/validate";
 
 function Finish() {
   const router = useRouter();
@@ -14,6 +15,7 @@ function Finish() {
   const [name, setName] = useState("");
   const [role, setRole] = useState<"customer" | "driver">(params.get("role") === "driver" ? "driver" : "customer");
   const [phone, setPhone] = useState("");
+  const [car, setCar] = useState<CarState>(emptyCar);
   const [agree, setAgree] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -45,12 +47,25 @@ function Finish() {
   }, [router]);
 
   const submit = async () => {
+    if (busy) return;
     setError("");
-        const pNorm = normalizePhone(phone);
-    if (!pNorm) return setError("Enter a valid Kenyan number, e.g. 0712 345 678.");
+    const pErr = phoneProblem(phone);
+    if (pErr) return setError(pErr);
+    if (car.has === null) return setError("Tell us if you have a car.");
+    if (car.has) {
+      const cp = plateProblem(car.plate);
+      if (cp) return setError(cp);
+    }
     if (!agree) return setError("Please accept the Terms and Privacy Policy.");
+
     setBusy(true);
-    const { error: e } = await supabase.rpc("complete_social_signup", { p_role: role, p_phone: pNorm});
+    const { error: e } = await supabase.rpc("complete_social_signup", {
+      p_role: role,
+      p_phone: normalizePhone(phone) as string,
+      p_has_car: car.has,
+      p_plate: car.has ? normalizePlate(car.plate) : null,
+      p_car: car.has ? car.details.trim() || null : null,
+    });
     setBusy(false);
     if (e) return setError(friendlyDbError(e.message, e.code));
     router.replace("/dashboard");
@@ -70,7 +85,7 @@ function Finish() {
         <div className="grid grid-cols-2 gap-2">
           {[
             { v: "customer" as const, icon: "🚗", label: "I want to hire a driver" },
-            { v: "driver" as const, icon: "🧑‍✈️", label: "I want to drive" },
+            { v: "driver" as const, icon: "🧑‍✈️", label: "I am a driver" },
           ].map((o) => (
             <button
               key={o.v}
@@ -89,10 +104,13 @@ function Finish() {
         <input
           className="w-full border-2 border-indigo-200 rounded-xl p-3"
           type="tel"
-          placeholder="Phone (e.g. 0712345678)"
+          inputMode="tel"
+          placeholder="Phone (e.g. 0712 345 678)"
           value={phone}
           onChange={(e) => setPhone(e.target.value)}
         />
+
+        <CarFields value={car} onChange={setCar} />
 
         <label className="flex gap-2 text-sm">
           <input type="checkbox" checked={agree} onChange={(e) => setAgree(e.target.checked)} />
