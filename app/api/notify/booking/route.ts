@@ -17,6 +17,7 @@ type Row = {
   refund_status: string;
   driver_earnings: number | null;
   vehicle: string;
+  timing: string;
 };
 type Hook = {
   type: "INSERT" | "UPDATE" | "DELETE";
@@ -57,14 +58,22 @@ export async function POST(req: Request) {
   const hook = (await req.json()) as Hook;
 
   // New request: text the nearest online drivers
+    // New request: text the right drivers
   if (hook.type === "INSERT" && hook.record) {
     const r = hook.record;
     if (r.status !== "requested") return NextResponse.json({ ok: true });
 
-    const { data } = await supabaseAdmin.rpc("online_driver_phones_near", {
-      p_lat: r.pickup_lat,
-      p_lng: r.pickup_lng,
-    });
+    const later = r.timing === "later";
+    const { data } = later
+      ? await supabaseAdmin.rpc("verified_driver_phones_near", {
+          p_lat: r.pickup_lat,
+          p_lng: r.pickup_lng,
+          p_vehicle: r.vehicle,
+        })
+      : await supabaseAdmin.rpc("online_driver_phones_near", {
+          p_lat: r.pickup_lat,
+          p_lng: r.pickup_lng,
+        });
     const drivers = (data ?? []) as { driver_id: string; phone: string }[];
     const when = formatWhen(r.scheduled_at);
 
@@ -72,7 +81,9 @@ export async function POST(req: Request) {
       drivers.map((d) =>
         sendSms(
           d.phone,
-          `New ${r.task_type} request near you for ${when}, KES ${r.price}. Open the app to accept: ${process.env.APP_BASE_URL}`
+          later
+            ? `New booking for ${when}: ${r.task_type}, KES ${r.price}. Open the app, Later tab, to accept: ${process.env.APP_BASE_URL}`
+            : `New ${r.task_type} request near you right now, KES ${r.price}. Open the app to accept: ${process.env.APP_BASE_URL}`
         )
       )
     );

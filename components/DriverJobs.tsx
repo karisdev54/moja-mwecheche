@@ -21,10 +21,15 @@ type Job = {
   dest_lng: number | null;
   route_km: number | null;
   route_min: number | null;
-  vehicle: string; 
+  vehicle: string;
   driver_note: string | null;
+  timing: string;
   customer: { full_name: string | null; phone: string | null; car_plate: string | null; car_details: string | null } | null;
 };
+
+type Tab = "now" | "later" | "mine";
+
+const EARLY_MS = 30 * 60 * 1000; // a job can be started 30 minutes before its booked time
 
 const NEXT: Record<string, { status: string; label: string }> = {
   accepted: { status: "in_progress", label: "Start job" },
@@ -35,19 +40,26 @@ async function fetchOpenJobs(): Promise<Job[]> {
   const { data } = await supabase
     .from("bookings")
     .select(
-      "id,driver_id,task_type,scheduled_at,duration_hours,destination,price,status,paid,pickup_lat,pickup_lng,dest_lat,dest_lng,route_km,route_min,vehicle,driver_note,customer:customer(full_name,phone,car_plate,car_details)"
+      "id,driver_id,task_type,scheduled_at,duration_hours,destination,price,status,paid,pickup_lat,pickup_lng,dest_lat,dest_lng,route_km,route_min,vehicle,driver_note,timing,customer:customer_id(full_name,phone,car_plate,car_details)"
     )
     .in("status", ["requested", "accepted", "in_progress"])
     .order("scheduled_at", { ascending: true });
-  return (data ?? [])as unknown as Job[];
+  return (data ?? []) as unknown as Job[];
 }
 
-// Where the driver should be heading for this job right now
 function targetFor(j: Job): { coords: LngLat; label: string } {
   if (j.status === "in_progress" && j.dest_lat !== null && j.dest_lng !== null) {
     return { coords: [j.dest_lng, j.dest_lat], label: "To destination" };
   }
   return { coords: [j.pickup_lng, j.pickup_lat], label: "To pickup" };
+}
+
+function inText(ms: number): string {
+  const m = Math.max(1, Math.ceil(ms / 60000));
+  if (m < 60) return `${m} min`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h} h ${m % 60} min`;
+  return `${Math.floor(h / 24)} d ${h % 24} h`;
 }
 
 export default function DriverJobs({
@@ -61,16 +73,28 @@ export default function DriverJobs({
 }) {
   const [jobs, setJobs] = useState<Job[]>([]);
   const [declined, setDeclined] = useState<string[]>([]);
+  const [tab, setTab] = useState<Tab>("now");
+  const [now, setNow] = useState(0);
+  const [hasCar, setHasCar] = useState<boolean | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [routeMsg, setRouteMsg] = useState("");
   const [shown, setShown] = useState<{ jobId: string; label: string; km: number; minutes: number } | null>(null);
   const [guideId, setGuideId] = useState<string | null>(null);
-  const [hasCar, setHasCar] = useState<boolean | null>(null);
 
-  // Used only by buttons (accept, advance), never inside an effect
   const reload = () => {
     fetchOpenJobs().then(setJobs);
   };
+
+  // A clock for "starts in" texts
+  useEffect(() => {
+    const tick = () => setNow(Date.now());
+    const t0 = setTimeout(tick, 0);
+    const t = setInterval(tick, 30000);
+    return () => {
+      clearTimeout(t0);
+      clearInterval(t);
+    };
+  }, []);
 
   // Always-on refresh: bookings changing, the driver's own row changing, and a timer
   useEffect(() => {
@@ -83,8 +107,6 @@ export default function DriverJobs({
     };
 
     refresh();
-    const timer = setInterval(refresh, 10000);
-
     supabase
       .from("profiles")
       .select("has_car")
@@ -93,6 +115,8 @@ export default function DriverJobs({
       .then(({ data }) => {
         if (active) setHasCar(data?.has_car ?? null);
       });
+
+    const timer = setInterval(refresh, 10000);
 
     const channel = supabase
       .channel("driver-jobs")
@@ -111,22 +135,16 @@ export default function DriverJobs({
     };
   }, [driverId]);
 
-  // Refresh when the driver goes online or offline, and again once their first
-  // location has been saved (the database needs it before showing nearby requests)
+  // Refresh when the driver goes online or offline, and again once their first location is saved
   useEffect(() => {
     let active = true;
-
     const refresh = () => {
       fetchOpenJobs().then((j) => {
         if (active) setJobs(j);
       });
     };
-
     const timers = [setTimeout(refresh, 0)];
-    if (online) {
-      timers.push(setTimeout(refresh, 3000), setTimeout(refresh, 8000));
-    }
-
+    if (online) timers.push(setTimeout(refresh, 3000), setTimeout(refresh, 8000));
     return () => {
       active = false;
       timers.forEach(clearTimeout);
@@ -163,14 +181,16 @@ export default function DriverJobs({
   };
 
   const accept = async (id: string) => {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from("bookings")
       .update({ driver_id: driverId, status: "accepted" })
       .eq("id", id)
       .eq("status", "requested")
       .is("driver_id", null)
       .select();
-    if (!data || data.length === 0) alert("Sorry, another driver took this job.");
+    if (error) alert(error.message);
+    else if (!data || data.length === 0) alert("Sorry, another driver took this job.");
+    else setTab("mine");
     reload();
   };
 
@@ -192,7 +212,6 @@ export default function DriverJobs({
       setGuideId(null);
     }
     if (status === "in_progress") {
-      // Starting the job: guide to the destination, if the customer set one
       const j = jobs.find((x) => x.id === id);
       clearRoute();
       setGuideId(j && j.dest_lat !== null && j.dest_lng !== null ? id : null);
@@ -205,17 +224,16 @@ export default function DriverJobs({
     setGuideId((cur) => (cur === id ? null : id));
   };
 
-  // New requests only show while online. The driver's own jobs always show.
-  const visible = jobs.filter(
-    (j) =>
-      j.driver_id === driverId ||
-      (online &&
-        j.status === "requested" &&
-        !declined.includes(j.id) &&
-        !(hasCar === false && j.vehicle === "driver_car"))
-  );
+  // The three queues
+  const mine = jobs
+    .filter((j) => j.driver_id === driverId)
+    .sort((a, b) => new Date(a.scheduled_at).getTime() - new Date(b.scheduled_at).getTime());
+  const open = jobs.filter((j) => j.status === "requested" && j.driver_id === null && !declined.includes(j.id));
+  const nowQ = online ? open.filter((j) => j.timing === "now") : [];
+  const laterQ = open.filter((j) => j.timing === "later");
 
-  // Guidance only runs for this driver's own accepted or in-progress job
+  const list = tab === "now" ? nowQ : tab === "later" ? laterQ : mine;
+
   const guideJob = guideId
     ? jobs.find(
         (j) =>
@@ -226,15 +244,22 @@ export default function DriverJobs({
     : undefined;
   const guideTarget = guideJob ? targetFor(guideJob) : null;
 
-  if (visible.length === 0) {
-    return (
-      <div className="bg-indigo-50 border-2 border-indigo-200 rounded-xl p-3 text-sm text-gray-900">
-        {online
-          ? "No requests within 10 km right now. Stay online and new jobs will appear here."
-          : "You are offline. Tap Go online to see job requests near you."}
-      </div>
-    );
-  }
+  const tabs: { v: Tab; label: string; n: number }[] = [
+    { v: "now", label: "⚡ Now", n: nowQ.length },
+    { v: "later", label: "📅 Later", n: laterQ.length },
+    { v: "mine", label: "My jobs", n: mine.length },
+  ];
+
+  const empty =
+    tab === "now"
+      ? online
+        ? "No requests within 10 km right now. Stay online and new ones will appear here."
+        : "You are offline. Tap Go online to receive Now requests."
+      : tab === "later"
+        ? hasCar === false
+          ? "No scheduled bookings near you yet. Bookings that need a driver's car are hidden because you have no car."
+          : "No scheduled bookings near you yet. New ones will appear here, even when you are offline."
+        : "You have no accepted jobs yet.";
 
   return (
     <div className="space-y-3">
@@ -248,10 +273,36 @@ export default function DriverJobs({
         />
       )}
 
-      {visible.map((j) => {
+      <div className="grid grid-cols-3 gap-2">
+        {tabs.map((t) => (
+          <button
+            key={t.v}
+            onClick={() => setTab(t.v)}
+            className={`rounded-lg border-2 p-2 text-sm font-semibold ${
+              tab === t.v ? "bg-indigo-600 text-white border-indigo-600" : "bg-white border-indigo-200"
+            }`}
+          >
+            {t.label}
+            {t.n > 0 && (
+              <span className="ml-1 inline-flex min-w-5 h-5 px-1 items-center justify-center rounded-full bg-red-600 text-white text-xs font-bold">
+                {t.n}
+              </span>
+            )}
+          </button>
+        ))}
+      </div>
+
+      {list.length === 0 && (
+        <div className="bg-indigo-50 border-2 border-indigo-200 rounded-xl p-3 text-sm text-gray-900">{empty}</div>
+      )}
+
+      {list.map((j) => {
         const t = targetFor(j);
         const navUrl = `https://www.google.com/maps/dir/?api=1&destination=${t.coords[1]},${t.coords[0]}&travelmode=driving`;
         const guiding = guideId === j.id;
+        const startAt = new Date(j.scheduled_at).getTime();
+        const canStart = now > 0 && now >= startAt - EARLY_MS;
+
         return (
           <div key={j.id} className="border-2 border-indigo-200 bg-indigo-50 rounded-xl p-3 text-sm text-gray-900">
             <div className="flex justify-between">
@@ -259,17 +310,20 @@ export default function DriverJobs({
               <span className="font-bold text-indigo-800">KES {j.price}</span>
             </div>
             <p className="text-gray-700">
+              <span className="font-semibold">{j.timing === "now" ? "⚡ Now" : "📅 Later"}</span> ·{" "}
               {new Date(j.scheduled_at).toLocaleString()} · {j.duration_hours}h
             </p>
+            <p className="text-xs">
+              {j.vehicle === "customer_car" ? "🔑 Drive the customer's car" : "🚕 You bring the car"}
+            </p>
+            {j.driver_note && <p className="text-xs italic">Note: “{j.driver_note}”</p>}
+
             {(j.status === "accepted" || j.status === "in_progress") && j.customer && (
               <div className="mt-2 bg-white border-2 border-indigo-200 rounded-lg p-2 text-xs space-y-1">
                 <p>
                   👤 Customer: <b>{j.customer.full_name || "Customer"}</b>
                   {j.customer.phone && (
-                    <a
-                      href={`tel:${j.customer.phone}`}
-                      className="ml-2 text-blue-700 underline font-semibold"
-                    >
+                    <a href={`tel:${j.customer.phone}`} className="ml-2 text-blue-700 underline font-semibold">
                       Call
                     </a>
                   )}
@@ -283,6 +337,7 @@ export default function DriverJobs({
                 )}
               </div>
             )}
+
             {j.destination && (
               <p className="mt-1">
                 📍 To {j.destination}
@@ -327,9 +382,7 @@ export default function DriverJobs({
               <button
                 onClick={() => toggleGuide(j.id)}
                 className={`w-full mt-2 font-bold rounded-lg p-3 ${
-                  guiding
-                    ? "bg-white border-2 border-red-300 text-red-700"
-                    : "bg-indigo-600 text-white"
+                  guiding ? "bg-white border-2 border-red-300 text-red-700" : "bg-indigo-600 text-white"
                 }`}
               >
                 {guiding ? "Stop guidance" : "🧭 Guide me"}
@@ -350,8 +403,15 @@ export default function DriverJobs({
               </div>
             ) : j.status === "accepted" && !j.paid ? (
               <p className="mt-2 text-xs text-gray-900 bg-white rounded-lg p-2 border border-indigo-200">
-                Waiting for the customer to pay. You can start once payment is received.
+                Waiting for the customer to pay. You can start once payment is received and the booked time is near.
               </p>
+            ) : j.status === "accepted" && !canStart ? (
+              <button
+                disabled
+                className="w-full mt-2 bg-indigo-600 text-white font-bold rounded-lg p-3 opacity-50"
+              >
+                {now === 0 ? "Checking time..." : `Starts in ${inText(startAt - EARLY_MS - now)}`}
+              </button>
             ) : (
               NEXT[j.status] && (
                 <button onClick={() => advance(j.id, NEXT[j.status].status)} className="w-full mt-2 bg-indigo-600 text-white font-bold rounded-lg p-3">

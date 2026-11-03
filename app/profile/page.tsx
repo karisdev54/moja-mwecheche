@@ -7,7 +7,6 @@ import BottomNav from "@/components/BottomNav";
 import Loader from "@/components/Loader";
 import PlateBadge from "@/components/PlateBadge";
 import { useThemePref } from "@/lib/theme";
-import { exitApp } from "@/lib/exit";
 import Badge from "@/components/Badge";
 import { inboxTotal, useInbox } from "@/lib/inbox";
 import { formatPlate } from "@/lib/validate";
@@ -64,7 +63,7 @@ async function fetchMe(): Promise<Me | null> {
 export default function ProfilePage() {
   const router = useRouter();
   const [me, setMe] = useState<Me | null>(null);
-  const [exiting, setExiting] = useState(false);
+  
   const themePref = useThemePref();
   const inbox = useInbox();
   const waiting = inbox ? inboxTotal(inbox) : 0;
@@ -86,11 +85,6 @@ export default function ProfilePage() {
     router.replace("/login");
   };
 
-  const exit = async () => {
-    setExiting(true);
-    const done = await exitApp();
-    if (!done) setExiting(false);
-  };
 
   if (!me) return <Loader full />;
 
@@ -183,13 +177,7 @@ export default function ProfilePage() {
         <button onClick={logout} className="w-full bg-white border-2 border-red-300 text-red-700 font-bold rounded-xl p-4">
           Log out
         </button>
-        <button
-          onClick={exit}
-          disabled={exiting}
-          className="w-full bg-white border-2 border-indigo-300 font-bold rounded-xl p-4 disabled:opacity-60"
-        >
-          {exiting ? "Closing..." : "⏻ Exit app"}
-        </button>
+        
       </div>
       <BottomNav />
     </main>

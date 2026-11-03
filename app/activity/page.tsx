@@ -106,6 +106,11 @@ export default function ActivityPage() {
     setReopen((r) => r.filter((x) => x !== id));
     refresh();
   };
+    const remove = async (id: string) => {
+    if (!window.confirm("Remove this request completely?")) return;
+    await supabase.from("bookings").delete().eq("id", id);
+    refresh();
+  };
 
   if (!data) return <Loader full />;
 
@@ -175,6 +180,11 @@ export default function ActivityPage() {
             <Link href={`/report?booking=${i.id}`} className="inline-block text-xs underline font-semibold pt-1">
               Report a problem
             </Link>
+              {!isDriver && !i.paid && !i.driver_id && (i.status === "expired" || i.status === "cancelled") && (
+              <button onClick={() => remove(i.id)} className="ml-3 text-xs underline font-semibold text-red-600">
+                Remove
+              </button>
+            )}
 
             {/* Rating: only here, at the bottom of a completed job */}
             {!isDriver && i.status === "completed" && i.driver_id && (
@@ -198,6 +208,7 @@ export default function ActivityPage() {
                 />
               )
             )}
+            
             {isDriver && i.review && (
               <p className="font-semibold pt-2 border-t">
                 Customer rated you <span className="text-yellow-500">{"★".repeat(i.review.rating)}</span>

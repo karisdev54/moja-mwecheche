@@ -134,25 +134,7 @@ export default function AdminPage() {
           <AdminNav />
           <AdminTodo kind="verify" />
           
-          <div className="flex flex-wrap gap-4 text-sm">
-            <Link href="/admin/stats" className="color-blue-700  font-semibold ">
-              Overview
-            </Link>
-            <Link href="/admin/payouts" className="color-blue-700  font-semibold ">
-              Payouts
-            </Link>
-            <Link href="/admin/refunds" className="color-blue-700  font-semibold ">
-              Refunds
-            </Link>
-            <Link href="/admin/reports" className="color-blue-700  font-semibold ">
-              Reports
-            </Link>
-
-            <Link href="/dashboard" className="color-blue-700  font-semibold">
-              Back to map
-            </Link>
-           
-          </div>
+          
         </div>
 
         {state.pending.length === 0 && (

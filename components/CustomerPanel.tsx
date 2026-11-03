@@ -3,12 +3,12 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import PlaceSearch from "@/components/PlaceSearch";
 import MapPicker from "@/components/MapPicker";
-import { fmtMinutes, getRoute, type LngLat, type Place, type RouteView } from "@/lib/mapbox";
 import PlateBadge from "@/components/PlateBadge";
+import { fmtMinutes, getRoute, type LngLat, type Place, type RouteView } from "@/lib/mapbox";
 
 const HOURLY_RATE = 1000; // KES per hour, keep in sync with hourly_rate in the bookings_guard SQL
 const TASKS = ["Airport transfer", "Wedding / event", "Business trip", "Errand / delivery", "Other"];
-const HOUR_CHIPS = [1, 2, 3, 4, 6, 8];
+const HOUR_CHIPS = [1, 2, 3, 4, 5, 6, 7, 8];
 
 const STATUS_STYLE: Record<string, string> = {
   requested: "bg-amber-100 text-amber-900",
@@ -22,6 +22,7 @@ const STATUS_STYLE: Record<string, string> = {
 const ACTIVE = ["requested", "accepted", "in_progress"];
 
 type Vehicle = "driver_car" | "customer_car";
+type Timing = "now" | "later";
 
 type Booking = {
   id: string;
@@ -34,13 +35,30 @@ type Booking = {
   refund_status: string;
   paid: boolean;
   driver_id: string | null;
-  driver: { full_name: string | null; phone: string | null; car_details: string | null; has_car: boolean | null; car_plate: string | null} | null;
+  driver: {
+    full_name: string | null;
+    phone: string | null;
+    car_details: string | null;
+    has_car: boolean | null;
+    car_plate: string | null;
+  } | null;
   widened_at: string | null;
   route_km: number | null;
   route_min: number | null;
   vehicle: string;
   driver_note: string | null;
+  timing: string;
 };
+
+const pad = (n: number) => String(n).padStart(2, "0");
+const toLocalInput = (d: Date) =>
+  `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+
+// Time is read here, outside the component, so rendering stays predictable
+const nowMs = () => Date.now();
+const nowIso = () => new Date(nowMs()).toISOString();
+const minLaterInput = () => toLocalInput(new Date(nowMs() + 60 * 60 * 1000));
+const isTooSoon = (iso: string) => new Date(iso).getTime() < nowMs() + 55 * 60 * 1000;
 
 // Shows a message, then clears it
 function flash(set: (v: string) => void, text: string, ms = 6000) {
@@ -52,7 +70,7 @@ async function fetchMyBookings(userId: string): Promise<Booking[]> {
   const { data } = await supabase
     .from("bookings")
     .select(
-      "id,task_type,scheduled_at,duration_hours,destination,price,status,paid,driver_id,refund_status,widened_at,route_km,route_min,vehicle,driver_note,driver:driver_id(full_name,phone,car_details,has_car)"
+      "id,task_type,scheduled_at,duration_hours,destination,price,status,paid,driver_id,refund_status,widened_at,route_km,route_min,vehicle,driver_note,timing,driver:driver_id(full_name,phone,car_details,has_car,car_plate)"
     )
     .eq("customer_id", userId)
     .order("created_at", { ascending: false })
@@ -71,7 +89,9 @@ export default function CustomerPanel({
 }) {
   const [open, setOpen] = useState(false);
   const [task, setTask] = useState(TASKS[0]);
+  const [timing, setTiming] = useState<Timing>("now");
   const [when, setWhen] = useState("");
+  const [minWhen, setMinWhen] = useState("");
   const [hoursText, setHoursText] = useState("1");
   const [vehicle, setVehicle] = useState<Vehicle>("driver_car");
   const [hasCar, setHasCar] = useState<boolean | null>(null);
@@ -138,7 +158,7 @@ export default function CustomerPanel({
     };
   }, [userId, apply]);
 
-  // Does this customer own a car? (set in Profile, Edit)
+  // Does this customer own a car? (set when registering, changed in Profile, My car)
   useEffect(() => {
     let active = true;
     supabase
@@ -165,6 +185,7 @@ export default function CustomerPanel({
   // Empties every box
   const resetForm = () => {
     setTask(TASKS[0]);
+    setTiming("now");
     setWhen("");
     setHoursText("1");
     setVehicle("driver_car");
@@ -176,6 +197,7 @@ export default function CustomerPanel({
   const openForm = () => {
     setOpen(true);
     setNearby(null);
+    setMinWhen(minLaterInput());
     navigator.geolocation.getCurrentPosition(
       async (pos) => {
         setMyPos([pos.coords.longitude, pos.coords.latitude]);
@@ -197,6 +219,7 @@ export default function CustomerPanel({
   const rebook = (b: Booking) => {
     setTask(b.task_type);
     setHoursText(String(b.duration_hours));
+    setTiming(b.timing === "later" ? "later" : "now");
     setWhen("");
     openForm();
   };
@@ -234,8 +257,15 @@ export default function CustomerPanel({
   const submit = () => {
     if (sendingRef.current) return; // a second tap is ignored
     setMsg("");
-    if (!when) return setMsg("Pick a date and time");
+
+    if (timing === "later") {
+      if (!when) return setMsg("Pick a date and time");
+      if (isTooSoon(when)) {
+        return setMsg("Later bookings must be at least 1 hour from now. Choose Now for an immediate request.");
+      }
+    }
     if (!hoursValid) return setMsg("Enter a duration between 0.5 and 72 hours.");
+    if (!destCoords) return setMsg("Choose where you are going. Pick a suggestion or use the map.");
 
     sendingRef.current = true;
     setSending(true);
@@ -249,15 +279,16 @@ export default function CustomerPanel({
         const { error } = await supabase.from("bookings").insert({
           customer_id: userId,
           task_type: task,
-          scheduled_at: new Date(when).toISOString(),
+          timing,
+          scheduled_at: timing === "now" ? nowIso() : new Date(when).toISOString(),
           duration_hours: hoursNum,
           vehicle,
           driver_note: note.trim() || null,
           pickup_lat: pos.coords.latitude,
           pickup_lng: pos.coords.longitude,
           destination: destination.trim() || null,
-          dest_lat: destCoords ? destCoords[1] : null,
-          dest_lng: destCoords ? destCoords[0] : null,
+          dest_lat: destCoords[1],
+          dest_lng: destCoords[0],
           route_km: routeInfo?.km ?? null,
           route_min: routeInfo?.minutes ?? null,
           price: estimate, // preview only, the database sets the real price
@@ -269,7 +300,10 @@ export default function CustomerPanel({
         }
         setOpen(false);
         resetForm();
-        flash(setNotice, "Request sent ✓");
+        flash(
+          setNotice,
+          timing === "now" ? "Request sent ✓ Looking for a driver" : "Booking sent ✓ Drivers can accept it now"
+        );
         reload();
       },
       () => {
@@ -283,6 +317,12 @@ export default function CustomerPanel({
   const cancel = async (id: string, paid: boolean) => {
     if (paid && !window.confirm("Cancel this booking and request a refund?")) return;
     await supabase.from("bookings").update({ status: "cancelled" }).eq("id", id);
+    reload();
+  };
+
+  // Removes an expired request completely
+  const remove = async (id: string) => {
+    await supabase.from("bookings").delete().eq("id", id);
     reload();
   };
 
@@ -372,6 +412,28 @@ export default function CustomerPanel({
         </button>
       ) : (
         <fieldset disabled={sending} className="min-w-0 space-y-3 rounded-xl border-2 border-indigo-200 bg-indigo-50 p-3">
+          <div className="grid grid-cols-2 gap-2">
+            {[
+              { v: "now" as const, icon: "⚡", label: "Now", sub: "As soon as possible" },
+              { v: "later" as const, icon: "📅", label: "Later", sub: "Pick a date and time" },
+            ].map((o) => (
+              <button
+                key={o.v}
+                type="button"
+                onClick={() => setTiming(o.v)}
+                className={`rounded-xl border-2 p-3 text-center ${
+                  timing === o.v
+                    ? "bg-indigo-600 text-white border-indigo-600"
+                    : "bg-white text-gray-900 border-indigo-200"
+                }`}
+              >
+                <span className="block text-2xl">{o.icon}</span>
+                <span className="block font-bold">{o.label}</span>
+                <span className="block text-xs">{o.sub}</span>
+              </button>
+            ))}
+          </div>
+
           <div>
             <p className="text-sm font-semibold mb-1">What do you need?</p>
             <select className="w-full border-2 border-indigo-200 rounded-lg p-3" value={task} onChange={(e) => setTask(e.target.value)}>
@@ -381,10 +443,19 @@ export default function CustomerPanel({
             </select>
           </div>
 
-          <div>
-            <p className="text-sm font-semibold mb-1">When?</p>
-            <input type="datetime-local" className="w-full border-2 border-indigo-200 rounded-lg p-3" value={when} onChange={(e) => setWhen(e.target.value)} />
-          </div>
+          {timing === "later" && (
+            <div>
+              <p className="text-sm font-semibold mb-1">When? (at least 1 hour from now)</p>
+              <input
+                type="datetime-local"
+                min={minWhen}
+                className="w-full border-2 border-indigo-200 rounded-lg p-3"
+                value={when}
+                onChange={(e) => setWhen(e.target.value)}
+              />
+              <p className="text-xs mt-1">Drivers can accept it ahead of time. Your driver starts at the booked time.</p>
+            </div>
+          )}
 
           <div>
             <p className="text-sm font-semibold mb-1">How many hours?</p>
@@ -426,7 +497,7 @@ export default function CustomerPanel({
                 { v: "driver_car" as const, icon: "🚕", label: "Driver brings a car" },
                 { v: "customer_car" as const, icon: "🔑", label: "Drive my car" },
               ].map((o) => {
-                const blocked = o.v === "customer_car" && hasCar === true;
+                const blocked = o.v === "customer_car" && hasCar !== true;
                 return (
                   <button
                     key={o.v}
@@ -445,13 +516,15 @@ export default function CustomerPanel({
                 );
               })}
             </div>
-             {hasCar !== true && (
-              <p className="text-xs mt-1">You did not add a car when you registered, so “Drive my car” is off.</p>
+            {hasCar !== true && (
+              <p className="text-xs mt-1">
+                You have no car on your account, so “Drive my car” is off. You can add one in Profile, My car.
+              </p>
             )}
           </div>
 
           <div>
-            <p className="text-sm font-semibold mb-1">Where to? (optional)</p>
+            <p className="text-sm font-semibold mb-1">Where to? (required)</p>
             <PlaceSearch
               value={destination}
               picked={destCoords !== null}
@@ -494,7 +567,7 @@ export default function CustomerPanel({
             />
           </div>
 
-          {nearby !== null && (
+          {timing === "now" && nearby !== null && (
             <p className={`text-sm font-semibold ${nearby > 0 ? "text-green-700" : "text-red-600"}`}>
               {nearby > 0
                 ? `${nearby} driver${nearby > 1 ? "s" : ""} available within 10 km`
@@ -540,11 +613,16 @@ export default function CustomerPanel({
         <div key={b.id} className="border-2 border-indigo-200 bg-indigo-50 rounded-xl p-3 text-sm text-gray-900">
           <div className="flex justify-between items-center">
             <span className="font-bold">{b.task_type}</span>
-            <span className={`px-2 py-1 rounded-full text-xs font-semibold capitalize ${STATUS_STYLE[b.status] ?? "bg-gray-200 text-gray-900"}`}>
+            <span
+              className={`px-2 py-1 rounded-full text-xs font-semibold capitalize ${
+                STATUS_STYLE[b.status] ?? "bg-gray-200 text-gray-900"
+              }`}
+            >
               {b.status.replace("_", " ")}
             </span>
           </div>
           <p className="text-gray-700 mt-1">
+            <span className="font-semibold">{b.timing === "now" ? "⚡ Now" : "📅 Later"}</span> ·{" "}
             {new Date(b.scheduled_at).toLocaleString()} · {b.duration_hours}h · KES {b.price}
           </p>
           <p className="text-xs text-gray-700">
@@ -561,15 +639,27 @@ export default function CustomerPanel({
 
           {b.status === "requested" && (
             <p className="mt-1 font-semibold text-indigo-800">
-              {b.widened_at ? "Still searching, now within 25 km..." : "Looking for a driver within 10 km..."}
+              {b.timing === "later"
+                ? "Waiting for a driver to accept your booking..."
+                : b.widened_at
+                  ? "Still searching, now within 25 km..."
+                  : "Looking for a driver within 10 km..."}
             </p>
           )}
           {b.status === "expired" && (
-            <div className="mt-1 space-y-1">
+            <div className="mt-1 space-y-2">
               <p className="font-semibold text-red-600">No driver accepted in time.</p>
-              <button onClick={() => rebook(b)} className="w-full bg-indigo-600 text-white rounded-lg p-3">
-                Request again
-              </button>
+              <div className="flex gap-2">
+                <button onClick={() => rebook(b)} className="flex-1 bg-indigo-600 text-white rounded-lg p-3 font-semibold">
+                  Request again
+                </button>
+                <button
+                  onClick={() => remove(b.id)}
+                  className="flex-1 bg-white border-2 border-red-300 text-red-700 rounded-lg p-3 font-semibold"
+                >
+                  Remove
+                </button>
+              </div>
             </div>
           )}
 
@@ -583,7 +673,7 @@ export default function CustomerPanel({
                   </a>
                 )}
               </p>
-                            {b.vehicle === "driver_car" &&
+              {b.vehicle === "driver_car" &&
                 b.driver.car_plate &&
                 (b.status === "accepted" || b.status === "in_progress") && (
                   <div className="mt-2 flex items-center gap-2">
@@ -622,6 +712,10 @@ export default function CustomerPanel({
               )}
               {payMsg && <p className="text-sm font-semibold text-gray-900">{payMsg}</p>}
             </div>
+          )}
+
+          {b.status === "accepted" && b.paid && b.timing === "later" && (
+            <p className="mt-1 text-xs font-semibold text-indigo-800">Your driver will start at the booked time.</p>
           )}
 
           {(b.status === "requested" || b.status === "accepted") && (
