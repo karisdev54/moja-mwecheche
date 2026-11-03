@@ -3,7 +3,6 @@ import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
-import { exitApp } from "@/lib/exit";
 
 type Done = {
   id: string;
@@ -221,15 +220,7 @@ export default function JobCompleteWatcher({ userId, role }: { userId: string; r
             >
               {isDriver ? "Back to the map" : "Maybe later"}
             </button>
-            <button
-              onClick={() => {
-                markSeen(job.id);
-                exitApp();
-              }}
-              className="w-full text-sm font-semibold underline"
-            >
-              ⏻ Done, close the app
-            </button>
+            
           </div>
         </div>
       </div>
