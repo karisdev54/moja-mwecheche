@@ -8,7 +8,9 @@ import Loader from "@/components/Loader";
 import PlateBadge from "@/components/PlateBadge";
 import { useThemePref } from "@/lib/theme";
 import { exitApp } from "@/lib/exit";
-
+import Badge from "@/components/Badge";
+import { inboxTotal, useInbox } from "@/lib/inbox";
+import { formatPlate } from "@/lib/validate";
 
 const SUPPORT_EMAIL = "kariukiobadiah655@gmail.com"; // change to your real support email
 const THEME_LABEL = { light: "Light", dark: "Dark", system: "Auto" } as const;
@@ -64,6 +66,8 @@ export default function ProfilePage() {
   const [me, setMe] = useState<Me | null>(null);
   const [exiting, setExiting] = useState(false);
   const themePref = useThemePref();
+  const inbox = useInbox();
+  const waiting = inbox ? inboxTotal(inbox) : 0;
 
   useEffect(() => {
     let active = true;
@@ -92,6 +96,7 @@ export default function ProfilePage() {
 
   const isAdmin = me.role === "admin";
   const row = "flex items-center justify-between p-3 border-b";
+  
 
   return (
     <main className="min-h-screen bg-gray-50 p-4 pb-28">
@@ -137,11 +142,30 @@ export default function ProfilePage() {
         )}
 
         <div className="bg-white rounded-2xl shadow p-2 text-sm font-semibold">
-          {isAdmin && <Link href="/admin" className={row}><span>Admin panel</span><span>›</span></Link>}
+                   {isAdmin && (
+            <>
+              <Link href="/admin/notifications" className={row}>
+                <span> Notifications</span>
+                <span className="flex items-center gap-2">{waiting > 0 && <Badge n={waiting} />}›</span>
+              </Link>
+              <Link href="/admin" className={row}>
+                <span>Admin panel</span>
+                <span className="flex items-center gap-2">{waiting > 0 && <Badge n={waiting} />}›</span>
+              </Link>
+            </>
+          )}
           <Link href="/profile/appearance" className={row}>
             <span>Appearance</span>
             <span className="text-indigo-700">{THEME_LABEL[themePref]} ›</span>
           </Link>
+                    {!isAdmin && (
+            <Link href="/profile/car" className={row}>
+              <span>🚗 My car</span>
+              <span className="text-indigo-700">
+                {me.has_car === true ? formatPlate(me.car_plate) : me.has_car === false ? "No car" : "Not set"} ›
+              </span>
+            </Link>
+          )}
           {!isAdmin && <Link href="/profile/password" className={row}><span>Change password</span><span>›</span></Link>}
           <Link href="/report" className={row}><span>Report a problem</span><span>›</span></Link>
           <a href={`mailto:${SUPPORT_EMAIL}`} className={row}><span>Help and support</span><span>›</span></a>

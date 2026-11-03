@@ -1,6 +1,7 @@
 "use client";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { inboxTotal, useInbox } from "@/lib/inbox";
 
 const TABS = [
   { href: "/dashboard", label: "Home", paths: ["M3 11l9-8 9 8v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"] },
@@ -10,6 +11,8 @@ const TABS = [
 
 export default function BottomNav() {
   const pathname = usePathname();
+  const inbox = useInbox();
+  const waiting = inbox ? inboxTotal(inbox) > 0 : false;
 
   return (
     <nav className="fixed bottom-0 left-0 right-0 z-30 bg-white border-t-2 border-indigo-200 pb-[env(safe-area-inset-bottom)]">
@@ -20,7 +23,7 @@ export default function BottomNav() {
             <Link
               key={t.href}
               href={t.href}
-              className={`flex-1 flex flex-col items-center gap-1 py-2 text-xs font-semibold ${
+              className={`relative flex-1 flex flex-col items-center gap-1 py-2 text-xs font-semibold ${
                 active ? "text-indigo-700" : "text-gray-700"
               }`}
             >
@@ -39,6 +42,9 @@ export default function BottomNav() {
                 ))}
               </svg>
               {t.label}
+              {t.href === "/profile" && waiting && (
+                <span className="absolute top-1.5 left-1/2 ml-2 w-3 h-3 rounded-full bg-red-600 border-2 border-white" />
+              )}
             </Link>
           );
         })}

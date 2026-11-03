@@ -3,7 +3,8 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 import Loader from "@/components/Loader";
-import type { Inbox } from "@/components/AdminBell";
+import type { Inbox } from "@/lib/inbox";
+import BottomNav from "@/components/BottomNav";
 
 type Ev = {
   ts: string;
@@ -85,11 +86,11 @@ export default function NotificationsPage() {
     todo.push({ icon: "⚠️", text: `${i.stuck_payments} payment${i.stuck_payments > 1 ? "s" : ""} pending over 15 minutes. Check the payments table.`, tone: "border-indigo-300 bg-indigo-50 text-indigo-900" });
 
   return (
-    <main className="min-h-screen bg-gray-50 p-4 pb-12">
+    <main className="min-h-screen bg-gray-50 p-4 pb-28">
       <div className="max-w-2xl mx-auto space-y-4 text-gray-900">
         <div className="flex items-center justify-between">
           <h1 className="text-2xl font-bold">🔔 Notifications</h1>
-          <Link href="/admin" className="text-sm underline">Back to admin</Link>
+          <Link href="/profile" className="text-sm underline">Back</Link>
         </div>
 
         <h2 className="text-lg font-bold">Needs your attention</h2>
@@ -148,6 +149,7 @@ export default function NotificationsPage() {
         })}
         <p className="text-xs text-gray-700 text-center">Updates every 30 seconds.</p>
       </div>
+      <BottomNav />
     </main>
   );
 }

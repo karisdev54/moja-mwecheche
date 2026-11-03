@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 import Loader from "@/components/Loader";
+import AdminTodo from "@/components/AdminTodo";
 
 type Report = {
   id: string;
@@ -87,6 +88,7 @@ export default function AdminReportsPage() {
       <div className="max-w-2xl mx-auto space-y-4 text-gray-900">
         <div className="flex items-center justify-between">
           <h1 className="text-2xl font-bold">Reports</h1>
+          <AdminTodo kind="reports" />
           <Link href="/admin" className="text-sm underline">Back to admin</Link>
         </div>
         <h2 className="text-lg font-bold">Open ({open.length})</h2>

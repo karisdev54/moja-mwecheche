@@ -23,7 +23,7 @@ type Hook = {
   record: Row | null;
   old_record: Row | null;
 };
-type Person = { id: string; full_name: string | null; phone: string | null; car_plate: string | null; };
+type Person = { id: string; full_name: string | null; phone: string | null; car_plate: string | null };
 
 const formatWhen = (iso: string) =>
   new Date(iso).toLocaleString("en-KE", {
@@ -32,8 +32,25 @@ const formatWhen = (iso: string) =>
     timeStyle: "short",
   });
 
+const plateText = (p: string | null | undefined) => {
+  if (!p) return "";
+  const m = p.match(/^([A-Z]{3,4})(\d{3})([A-Z]?)$/);
+  return m ? `${m[1]} ${m[2]}${m[3]}` : p;
+};
+
 export async function POST(req: Request) {
-  if (!process.env.WEBHOOK_SECRET || req.headers.get("x-webhook-secret") !== process.env.WEBHOOK_SECRET) {
+  const expected = (process.env.WEBHOOK_SECRET ?? "").trim();
+  const sent = (req.headers.get("x-webhook-secret") ?? "").trim();
+
+  if (!expected) {
+    console.error("notify/booking: WEBHOOK_SECRET is not set in this deployment");
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+  if (sent !== expected) {
+    // Lengths only, so the secret itself never reaches the logs
+    console.error(
+      `notify/booking: secret mismatch (sent ${sent ? sent.length + " chars" : "nothing"}, expected ${expected.length} chars)`
+    );
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
@@ -69,7 +86,10 @@ export async function POST(req: Request) {
   const o = hook.old_record;
 
   const ids = [n.customer_id, n.driver_id].filter((x): x is string => !!x);
-  const { data } = await supabaseAdmin.from("profiles").select("id,full_name,phone").in("id", ids);
+  const { data } = await supabaseAdmin
+    .from("profiles")
+    .select("id,full_name,phone,car_plate")
+    .in("id", ids);
   const people = new Map<string, Person>(((data ?? []) as Person[]).map((p) => [p.id, p]));
   const customer = people.get(n.customer_id);
   const driver = n.driver_id ? people.get(n.driver_id) : undefined;
@@ -78,10 +98,12 @@ export async function POST(req: Request) {
   const jobs: Promise<void>[] = [];
 
   if (o.status === "requested" && n.status === "accepted") {
+    const car =
+      n.vehicle === "driver_car" && driver?.car_plate ? ` Car: ${plateText(driver.car_plate)}.` : "";
     jobs.push(
       sendSms(
         customer?.phone,
-        `Your ${n.task_type} booking for ${when} was accepted by ${driver?.full_name ?? "a driver"} (${driver?.phone ?? ""}). Open the app to pay KES ${n.price}.`
+        `Your ${n.task_type} booking for ${when} was accepted by ${driver?.full_name ?? "a driver"} (${driver?.phone ?? ""}).${car} Open the app to pay KES ${n.price}.`
       )
     );
   }
@@ -91,7 +113,7 @@ export async function POST(req: Request) {
     jobs.push(sendSms(driver?.phone, `Booking paid: ${n.task_type} on ${when}. You can start the job.`));
   }
 
-    if (o.status !== "completed" && n.status === "completed") {
+  if (o.status !== "completed" && n.status === "completed") {
     jobs.push(
       sendSms(
         customer?.phone,

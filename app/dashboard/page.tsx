@@ -12,7 +12,8 @@ import BottomNav from "@/components/BottomNav";
 import Loader from "@/components/Loader";
 import UserChip from "@/components/UserChip";
 import JobCompleteWatcher from "@/components/JobCompleteWatcher";
-import AdminBell from "@/components/AdminBell";
+import Badge from "@/components/Badge";
+import { inboxTotal, useInbox } from "@/lib/inbox";
 
 type Profile = { id: string; full_name: string | null; role: string; avatar_url: string | null; phone: string | null };
 
@@ -22,6 +23,8 @@ export default function Dashboard() {
   const [loadError, setLoadError] = useState("");
   const [assignedId, setAssignedId] = useState<string | null>(null);
   const [route, setRoute] = useState<RouteView | null>(null);
+  const inbox = useInbox();
+  const waiting = inbox ? inboxTotal(inbox) : 0;
 
   useEffect(() => {
     let active = true;
@@ -104,16 +107,18 @@ export default function Dashboard() {
         )}
 
                 <div className="flex items-center gap-2">
-          {profile.role === "admin" && <AdminBell />}
-          <button onClick={logout} className="bg-white rounded-xl shadow px-4 py-3 text-sm font-semibold text-gray-900">
-            Log out
-          </button>
+          
         </div>
 
         {profile.role === "admin" && (
           <div className="flex justify-center">
-            <Link href="/admin" className="bg-black text-white rounded-xl shadow px-6 py-3">
+                        <Link href="/admin" className="relative bg-black text-white rounded-xl shadow px-6 py-3">
               Open admin panel
+              {waiting > 0 && (
+                <span className="absolute -top-2 -right-2">
+                  <Badge n={waiting} />
+                </span>
+              )}
             </Link>
           </div>
         )}

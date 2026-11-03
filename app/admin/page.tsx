@@ -3,7 +3,8 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 import Loader from "@/components/Loader";
-import AdminBell from "@/components/AdminBell";
+import AdminNav from "@/components/AdminNav";
+import AdminTodo from "@/components/AdminTodo";
 
 type DocLink = { id: string; doc_type: string; url: string };
 type PendingDriver = {
@@ -128,9 +129,11 @@ export default function AdminPage() {
   return (
     <main className="min-h-screen bg-gray-50 p-4">
       <div className="max-w-2xl mx-auto space-y-4 text-gray-900">
-        <div className="space-y-2">
+        <div className="space-y-3">
           <h1 className="text-2xl font-bold">Driver verification</h1>
-          <AdminBell />
+          <AdminNav />
+          <AdminTodo kind="verify" />
+          
           <div className="flex flex-wrap gap-4 text-sm">
             <Link href="/admin/stats" className="color-blue-700  font-semibold ">
               Overview
