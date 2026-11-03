@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 import { exitApp } from "@/lib/exit";
@@ -15,13 +16,21 @@ type Done = {
 
 const KEY = "seen-complete";
 const COLORS = ["#6366f1", "#22d3ee", "#f59e0b", "#ef4444", "#22c55e", "#a855f7"];
-const PIECES = Array.from({ length: 28 }, (_, i) => ({
+const PIECES = Array.from({ length: 32 }, (_, i) => ({
   left: (i * 37) % 100,
   delay: (i % 9) * 0.15,
-  dur: 2.4 + (i % 5) * 0.35,
+  dur: 2.6 + (i % 5) * 0.35,
   dx: ((i * 53) % 120) - 60,
   color: COLORS[i % COLORS.length],
+  round: i % 3 === 0,
 }));
+const STARS = [
+  { x: 10, y: 20, d: 0 },
+  { x: 86, y: 16, d: 0.4 },
+  { x: 20, y: 66, d: 0.8 },
+  { x: 80, y: 60, d: 1.2 },
+  { x: 50, y: 10, d: 0.6 },
+];
 
 function seenList(): string[] {
   try {
@@ -82,7 +91,7 @@ export default function JobCompleteWatcher({ userId, role }: { userId: string; r
     };
   }, [userId, role]);
 
-  if (!job) return null;
+  if (!job || typeof document === "undefined") return null;
 
   const close = () => {
     markSeen(job.id);
@@ -91,17 +100,25 @@ export default function JobCompleteWatcher({ userId, role }: { userId: string; r
   };
 
   const isDriver = role === "driver";
+  const amount = isDriver ? Number(job.driver_earnings ?? 0) : Number(job.price);
 
-  return (
-    <div className="fixed inset-0 z-[80] flex items-center justify-center p-5 bg-black/60 overflow-hidden">
+  // Drawn straight onto the page, so nothing around it can push it off-centre
+  return createPortal(
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label="Job complete"
+      className="fixed inset-0 z-[90] flex items-center justify-center overflow-hidden bg-black/60 backdrop-blur-sm px-4 pt-[max(1rem,env(safe-area-inset-top))] pb-[max(1rem,env(safe-area-inset-bottom))]"
+    >
       {PIECES.map((p, i) => (
         <span
           key={i}
-          className="confetti"
+          className="confetti pointer-events-none"
           style={
             {
               left: `${p.left}%`,
               background: p.color,
+              borderRadius: p.round ? "9999px" : undefined,
               animationDuration: `${p.dur}s`,
               animationDelay: `${p.delay}s`,
               "--dx": `${p.dx}px`,
@@ -110,66 +127,113 @@ export default function JobCompleteWatcher({ userId, role }: { userId: string; r
         />
       ))}
 
-      <div className="relative w-full max-w-sm bg-white rounded-3xl shadow-2xl p-6 text-center space-y-3 text-gray-900 pop-in">
-        <div className="relative mx-auto w-20 h-20">
-          <span className="pulse-ring absolute inset-0 rounded-full bg-green-400/50" />
-          <svg viewBox="0 0 52 52" className="relative w-20 h-20">
-            <circle className="check-circle" cx="26" cy="26" r="25" fill="none" stroke="#16a34a" strokeWidth="3" />
-            <path className="check-tick" d="M14 27l8 8 16-16" fill="none" stroke="#16a34a" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" />
+      <div
+        className="relative w-full max-w-sm max-h-[calc(100dvh-2rem)] overflow-y-auto rounded-[2rem] shadow-2xl pop-in"
+        style={{ background: "var(--surface)", color: "var(--fg)" }}
+      >
+        {/* Header: gradient, twinkling stars, a check badge and a curved bottom edge */}
+        <div
+          className="relative h-44 overflow-hidden"
+          style={{ background: "linear-gradient(135deg,#4338ca 0%,#6366f1 45%,#0e7490 100%)" }}
+        >
+          {STARS.map((s, i) => (
+            <span
+              key={i}
+              className="twinkle absolute text-white text-lg select-none"
+              style={{ left: `${s.x}%`, top: `${s.y}%`, animationDelay: `${s.d}s` }}
+            >
+              ✦
+            </span>
+          ))}
+
+          <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-[58%] w-24 h-24">
+            <span className="pulse-ring absolute inset-0 rounded-full bg-white/50" />
+            <span className="pulse-ring absolute inset-0 rounded-full bg-white/30" style={{ animationDelay: "1.2s" }} />
+            <div className="relative w-24 h-24 rounded-full bg-white shadow-xl flex items-center justify-center">
+              <svg viewBox="0 0 52 52" className="w-16 h-16">
+                <circle className="check-circle" cx="26" cy="26" r="25" fill="none" stroke="#16a34a" strokeWidth="3" />
+                <path
+                  className="check-tick"
+                  d="M14 27l8 8 16-16"
+                  fill="none"
+                  stroke="#16a34a"
+                  strokeWidth="4"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            </div>
+          </div>
+
+          <svg
+            viewBox="0 0 400 40"
+            preserveAspectRatio="none"
+            className="absolute bottom-0 left-0 w-full h-8"
+            aria-hidden="true"
+          >
+            <path d="M0 40 L0 22 Q100 0 200 22 T400 22 L400 40 Z" fill="var(--surface)" />
           </svg>
         </div>
 
-        <h2 className="text-2xl font-extrabold">{isDriver ? "Great job! 🎉" : "Job complete! 🎉"}</h2>
-        <p className="font-semibold">
-          {isDriver ? "Thank you for driving with KEY AND GO." : "Thank you for choosing KEY AND GO."}
-        </p>
-        <p className="text-sm text-gray-700">
-          {isDriver
-            ? `Your ${job.task_type} job is done.`
-            : `Your ${job.task_type} is done. We hope it went smoothly.`}
-        </p>
+        <div className="px-6 pb-6 pt-1 text-center space-y-3">
+          <h2 className="text-2xl font-extrabold" style={{ color: "var(--heading)" }}>
+            {isDriver ? "Great job! 🎉" : "Job complete! 🎉"}
+          </h2>
+          <p className="font-semibold">
+            {isDriver ? "Thank you for driving with KEY AND GO." : "Thank you for choosing KEY AND GO."}
+          </p>
+          <p className="text-sm">
+            {isDriver
+              ? `Your ${job.task_type} job is done.`
+              : `Your ${job.task_type} is done. We hope it went smoothly.`}
+          </p>
 
-        <div className="bg-indigo-50 border-2 border-indigo-200 rounded-2xl p-3 text-sm">
-          {isDriver ? (
-            <>
-              <p className="text-gray-700">You earned</p>
-              <p className="text-2xl font-extrabold text-indigo-800">
-                KES {Math.round(Number(job.driver_earnings ?? 0)).toLocaleString()}
+          <div className="grid grid-cols-2 gap-2">
+            <div className="rounded-2xl border-2 border-indigo-200 bg-indigo-50 p-3">
+              <p className="text-xs">{isDriver ? "You earned" : "Total paid"}</p>
+              <p className="text-xl font-extrabold text-indigo-800">KES {Math.round(amount).toLocaleString()}</p>
+            </div>
+            <div className="rounded-2xl border-2 border-indigo-200 bg-indigo-50 p-3">
+              <p className="text-xs">Duration</p>
+              <p className="text-xl font-extrabold text-indigo-800">
+                {job.duration_hours} h
               </p>
-              <p className="text-xs text-gray-700">After our commission. Paid out to your M-Pesa.</p>
-            </>
-          ) : (
-            <>
-              <p className="text-gray-700">Total paid</p>
-              <p className="text-2xl font-extrabold text-indigo-800">KES {Math.round(job.price).toLocaleString()}</p>
-              <p className="text-xs text-gray-700">{job.duration_hours} hour{job.duration_hours === 1 ? "" : "s"}</p>
-            </>
-          )}
-        </div>
+            </div>
+          </div>
 
-        {!isDriver && (
-          <Link
-            href="/activity"
-            onClick={() => markSeen(job.id)}
-            className="block text-white font-bold rounded-xl p-3"
-            style={{ background: "linear-gradient(90deg,#4338ca,#0e7490)" }}
-          >
-            ⭐ Rate your driver
-          </Link>
-        )}
-        <button onClick={close} className="w-full bg-white border-2 border-indigo-200 font-semibold rounded-xl p-3">
-          {isDriver ? "Back to the map" : "Maybe later"}
-        </button>
+          {job.destination && <p className="text-xs">📍 {job.destination}</p>}
+          {isDriver && <p className="text-xs">After our commission. Paid out to your M-Pesa.</p>}
+
+          <div className="space-y-2 pt-1">
+            {!isDriver && (
+              <Link
+                href="/activity"
+                onClick={() => markSeen(job.id)}
+                className="block text-white font-bold rounded-xl p-3"
+                style={{ background: "linear-gradient(90deg,#4338ca,#0e7490)" }}
+              >
+                ⭐ Rate your driver
+              </Link>
+            )}
+            <button
+              onClick={close}
+              className="w-full bg-white border-2 border-indigo-200 font-semibold rounded-xl p-3"
+            >
+              {isDriver ? "Back to the map" : "Maybe later"}
+            </button>
+            <button
+              onClick={() => {
+                markSeen(job.id);
+                exitApp();
+              }}
+              className="w-full text-sm font-semibold underline"
+            >
+              ⏻ Done, close the app
+            </button>
+          </div>
+        </div>
       </div>
-              <button
-          onClick={() => {
-            markSeen(job.id);
-            exitApp();
-          }}
-          className="w-full text-sm font-semibold underline"
-        >
-          ⏻ Done, close the app
-        </button>
-    </div>
+    </div>,
+    document.body
   );
 }
