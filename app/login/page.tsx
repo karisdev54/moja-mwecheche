@@ -241,19 +241,23 @@ function LoginForm() {
     setInfo("If an account exists for that email, a reset link is on its way. Check your inbox and spam folder.");
   };
 
-  const social = async (provider: "google" | "apple") => {
+    const social = async (provider: "google" | "apple") => {
     if (busy) return;
     setError("");
     setInfo("");
     setSocialBusy(true);
     const { error: e } = await supabase.auth.signInWithOAuth({
       provider,
-      options: { redirectTo: `${window.location.origin}/auth/complete?role=${role}` },
+      options: {
+        redirectTo: `${window.location.origin}/auth/complete?role=${role}`,
+        queryParams: provider === "google" ? { prompt: "select_account" } : undefined,
+      },
     });
     if (e) {
       setSocialBusy(false);
       setError(e.message);
     }
+    // On success the browser leaves this page, so there is nothing more to do here
   };
 
   const title =
