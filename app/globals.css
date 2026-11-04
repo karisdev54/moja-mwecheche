@@ -245,3 +245,8 @@ input[type="checkbox"]:focus-visible {
 .check-tick { stroke-dasharray: 48; stroke-dashoffset: 48; animation: draw 0.4s 0.8s ease-out forwards; }
 .pulse-ring { animation: ring-pulse 1.6s 0.9s ease-out 2; }
 .confetti { position: absolute; top: -12px; width: 9px; height: 14px; border-radius: 2px; animation: confetti-fall linear forwards; }
+@keyframes twinkle {
+  0%, 100% { opacity: 0.2; transform: scale(0.6) rotate(0deg); }
+  50% { opacity: 1; transform: scale(1.1) rotate(25deg); }
+}
+.twinkle { animation: twinkle 1.8s ease-in-out infinite; }
