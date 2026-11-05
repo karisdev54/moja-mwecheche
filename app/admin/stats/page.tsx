@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 import Loader from "@/components/Loader";
+import AdminNav from "@/components/AdminNav";
 
 type Stats = {
   bookings_total: number;
@@ -77,6 +78,7 @@ export default function AdminStatsPage() {
       <div className="max-w-3xl mx-auto space-y-4">
         <div className="flex items-center justify-between">
           <h1 className="text-2xl font-bold">Overview</h1>
+          <AdminNav />
           <Link href="/admin" className="text-sm underline">Back to admin</Link>
         </div>
 

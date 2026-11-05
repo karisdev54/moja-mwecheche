@@ -250,3 +250,71 @@ input[type="checkbox"]:focus-visible {
   50% { opacity: 1; transform: scale(1.1) rotate(25deg); }
 }
 .twinkle { animation: twinkle 1.8s ease-in-out infinite; }
+/* ---------- Modern look ---------- */
+.grad-bg { background: linear-gradient(135deg, #4338ca, #0e7490); }
+
+.glass {
+  background: color-mix(in srgb, var(--surface) 72%, transparent);
+  -webkit-backdrop-filter: blur(14px);
+  backdrop-filter: blur(14px);
+  border: 1px solid color-mix(in srgb, var(--border) 55%, transparent);
+}
+
+.gradient-text {
+  background: linear-gradient(90deg, #6366f1, #22d3ee, #a855f7, #6366f1);
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: grad-move 6s linear infinite;
+}
+@keyframes grad-move { to { background-position: -200% 0; } }
+
+/* A light sweep across a button */
+.btn-shine { position: relative; overflow: hidden; }
+.btn-shine::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(110deg, transparent 30%, rgba(255, 255, 255, 0.35) 50%, transparent 70%);
+  transform: translateX(-120%);
+  animation: shine 3.4s ease-in-out infinite;
+}
+@keyframes shine { 60%, 100% { transform: translateX(120%); } }
+
+/* Slowly drifting coloured glow, for hero backgrounds */
+.aurora {
+  position: absolute;
+  inset: -20%;
+  background:
+    radial-gradient(40% 40% at 20% 30%, rgba(99, 102, 241, 0.45), transparent 70%),
+    radial-gradient(35% 35% at 80% 20%, rgba(34, 211, 238, 0.4), transparent 70%),
+    radial-gradient(40% 40% at 60% 80%, rgba(168, 85, 247, 0.35), transparent 70%);
+  filter: blur(30px);
+  animation: aurora 18s ease-in-out infinite alternate;
+}
+@keyframes aurora { to { transform: translate3d(4%, -3%, 0) scale(1.1) rotate(6deg); } }
+
+.float { animation: float 5s ease-in-out infinite; }
+@keyframes float { 50% { transform: translateY(-10px); } }
+
+/* Cards lift when hovered (desktop only) */
+@media (hover: hover) {
+  .lift { transition: transform 0.25s cubic-bezier(0.2, 0.8, 0.2, 1), box-shadow 0.25s; }
+  .lift:hover { transform: translateY(-4px); box-shadow: 0 14px 30px rgba(67, 56, 202, 0.18); }
+}
+
+/* Pulsing dot for drivers on the map */
+.map-dot {
+  width: 16px;
+  height: 16px;
+  border-radius: 9999px;
+  background: var(--c);
+  border: 3px solid #fff;
+  box-shadow: 0 0 0 0 color-mix(in srgb, var(--c) 60%, transparent);
+  animation: dot-pulse 2s infinite;
+}
+@keyframes dot-pulse {
+  70% { box-shadow: 0 0 0 14px transparent; }
+  100% { box-shadow: 0 0 0 0 transparent; }
+}

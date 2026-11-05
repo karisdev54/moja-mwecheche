@@ -5,6 +5,7 @@ import PlaceSearch from "@/components/PlaceSearch";
 import MapPicker from "@/components/MapPicker";
 import PlateBadge from "@/components/PlateBadge";
 import { fmtMinutes, getRoute, type LngLat, type Place, type RouteView } from "@/lib/mapbox";
+import JobTracker from "@/components/JobTracker";
 
 const HOURLY_RATE = 1000; // KES per hour, keep in sync with hourly_rate in the bookings_guard SQL
 const TASKS = ["Airport transfer", "Wedding / event", "Business trip", "Errand / delivery", "Other"];

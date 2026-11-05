@@ -4,6 +4,7 @@ import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 import Loader from "@/components/Loader";
 import AdminTodo from "@/components/AdminTodo";
+import AdminNav from "@/components/AdminNav";
 
 type Refund = {
   id: string;
@@ -115,6 +116,7 @@ export default function RefundsPage() {
         <div className="flex items-center justify-between">
           <h1 className="text-2xl font-bold">Refunds</h1>
           <AdminTodo kind="refunds" />
+          <AdminNav />
           <Link href="/admin" className="text-sm underline">Back to admin</Link>
         </div>
 

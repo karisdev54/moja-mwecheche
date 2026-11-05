@@ -4,6 +4,7 @@ import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 import Loader from "@/components/Loader";
 import AdminTodo from "@/components/AdminTodo";
+import AdminNav from "@/components/AdminNav";
 
 type Balance = {
   driver_id: string;
@@ -120,6 +121,7 @@ export default function PayoutsPage() {
         <div className="flex items-center justify-between">
           <h1 className="text-2xl font-bold">Driver payouts</h1>
           <AdminTodo kind="payouts" />
+          <AdminNav />
           <Link href="/admin" className="text-sm underline">Back to admin</Link>
         </div>
 

@@ -7,6 +7,7 @@ import BottomNav from "@/components/BottomNav";
 import DriverRating from "@/components/DriverRating";
 import RateDriver from "@/components/RateDriver";
 import Loader from "@/components/Loader";
+import CountUp from "@/components/motion/CountUp";
 
 type Item = {
   id: string;
@@ -122,7 +123,7 @@ export default function ActivityPage() {
   const shown = match ? data.items.filter((i) => match.includes(i.status)) : data.items;
 
   return (
-    <main className="min-h-screen bg-gray-50 p-4 pb-28">
+    <main className="min-h-screen bg-gray-50 p-4 pb-28 stagger">
       <div className="max-w-md mx-auto space-y-4 text-gray-900 stagger">
         <h1 className="text-2xl font-bold">Activity</h1>
 
@@ -131,11 +132,11 @@ export default function ActivityPage() {
         <div className="grid grid-cols-2 gap-3">
           <div className="bg-white rounded-2xl shadow p-4">
             <p className="text-sm text-gray-700">{isDriver ? "Jobs completed" : "Trips completed"}</p>
-            <p className="text-2xl font-bold">{done.length}</p>
+            <p className="text-2xl font-bold"><CountUp value={done.length} /></p>
           </div>
           <div className="bg-white rounded-2xl shadow p-4">
             <p className="text-sm text-gray-700">{isDriver ? "Total earned" : "Total spent"}</p>
-            <p className="text-2xl font-bold text-indigo-800">KES {Math.round(total).toLocaleString()}</p>
+            <p className="text-2xl font-bold text-indigo-800">KES <CountUp value={Math.round(total)} /></p>
           </div>
         </div>
 

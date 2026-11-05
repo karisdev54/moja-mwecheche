@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import mapboxgl from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
 import { supabase } from "@/lib/supabase";
@@ -8,31 +8,9 @@ import { useTheme } from "@/lib/theme";
 
 const STALE_MS = 60000;
 
-const styleFor = (theme: string, sat: boolean) =>
-  sat
-    ? "mapbox://styles/mapbox/satellite-streets-v12"
-    : theme === "dark"
-      ? "mapbox://styles/mapbox/dark-v11"
-      : "mapbox://styles/mapbox/streets-v12";
-function applyRelief(m: mapboxgl.Map, on: boolean) {
-  try {
-    if (on) {
-      if (!m.getSource("mapbox-dem")) {
-        m.addSource("mapbox-dem", {
-          type: "raster-dem",
-          url: "mapbox://mapbox.mapbox-terrain-dem-v1",
-          tileSize: 512,
-          maxzoom: 14,
-        });
-      }
-      m.setTerrain({ source: "mapbox-dem", exaggeration: 1.3 });
-    } else {
-      m.setTerrain(null);
-    }
-  } catch {
-    // the style is still loading; this is applied again when it finishes
-  }
-}
+const styleFor = (theme: string) =>
+  theme === "dark" ? "mapbox://styles/mapbox/dark-v11" : "mapbox://styles/mapbox/streets-v12";
+
 type Driver = {
   id: string;
   lat: number | null;
@@ -58,9 +36,6 @@ export default function DriverMap({
 
   // Hooks must be called here, at the top of the component, never inside an effect
   const theme = useTheme();
-  const [sat, setSat] = useState(false);
-  const [tilt, setTilt] = useState(false);
-  const tiltRef = useRef(false);
 
   useEffect(() => {
     if (!container.current) return;
@@ -80,7 +55,7 @@ export default function DriverMap({
 
     mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN as string;
 
-    const initialStyle = styleFor(document.documentElement.dataset.theme ?? "light", false);
+    const initialStyle = styleFor(document.documentElement.dataset.theme ?? "light");
     styleRef.current = initialStyle;
 
     const map = new mapboxgl.Map({
@@ -113,8 +88,6 @@ export default function DriverMap({
         if (src) {
           src.setData(data);
         } else {
-          // Bright cyan on satellite imagery, indigo on the normal map
-          const lineColor = styleRef.current.includes("satellite") ? "#22d3ee" : "#4338ca";
           map.addSource("route", { type: "geojson", data });
           map.addLayer({
             id: "route-casing",
@@ -128,7 +101,7 @@ export default function DriverMap({
             type: "line",
             source: "route",
             layout: { "line-join": "round", "line-cap": "round" },
-            paint: { "line-color": lineColor, "line-width": 5 },
+            paint: { "line-color": "#4338ca", "line-width": 5 },
           });
         }
       } catch {
@@ -289,56 +262,16 @@ export default function DriverMap({
     drawRouteRef.current();
   }, [route]);
 
-  // Switch the map between light, dark and satellite
-    // Switch the map between light, dark and satellite
+  // Switch the map between light and dark when the theme changes
   useEffect(() => {
     const m = mapRef.current;
-    const next = styleFor(theme, sat);
+    const next = styleFor(theme);
     if (!m || styleRef.current === next) return;
     styleRef.current = next;
     m.setStyle(next);
-    // A new style wipes the route layers and the terrain, so put them back once it has loaded
-    m.once("style.load", () => {
-      drawRouteRef.current();
-      applyRelief(m, tiltRef.current);
-    });
-  }, [theme, sat]);
+    // A new style wipes the route layers, so draw them again once it has loaded
+    m.once("style.load", () => drawRouteRef.current());
+  }, [theme]);
 
-  // 3D: tilt the map and raise the terrain
-  useEffect(() => {
-    tiltRef.current = tilt;
-    const m = mapRef.current;
-    if (!m) return;
-    applyRelief(m, tilt);
-    m.easeTo({ pitch: tilt ? 55 : 0, duration: 800 });
-  }, [tilt]);
-
-  return (
-    <div className="relative h-full w-full">
-      <div ref={container} className="h-full w-full" />
-      {/* Hidden while driver guidance is running, because the guidance banner sits in the same spot */}
-            {!route?.follow && (
-        <div className="absolute right-3 top-[calc(env(safe-area-inset-top)+4.75rem)] z-10 flex flex-col gap-2">
-          <button
-            onClick={() => setSat((s) => !s)}
-            aria-pressed={sat}
-            aria-label={sat ? "Switch to the normal map" : "Switch to satellite view"}
-            className="bg-white rounded-xl shadow px-3 py-2 text-sm font-semibold"
-          >
-            {sat ? "🗺️ Map" : "🛰️ Satellite"}
-          </button>
-          <button
-            onClick={() => setTilt((t) => !t)}
-            aria-pressed={tilt}
-            aria-label={tilt ? "Switch to flat view" : "Switch to 3D view"}
-            className={`rounded-xl shadow px-3 py-2 text-sm font-semibold ${
-              tilt ? "bg-indigo-600 text-white" : "bg-white"
-            }`}
-          >
-            🏔️ 3D
-          </button>
-        </div>
-      )}
-    </div>
-  );
+  return <div ref={container} className="h-full w-full" />;
 }

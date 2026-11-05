@@ -15,7 +15,7 @@ import JobCompleteWatcher from "@/components/JobCompleteWatcher";
 import Badge from "@/components/Badge";
 import { inboxTotal, useInbox } from "@/lib/inbox";
 
-type Profile = { id: string; full_name: string | null; role: string; avatar_url: string | null; phone: string | null };
+type Profile = { id: string; full_name: string | null; role: string; avatar_url: string | null; phone: string | null; suspended: boolean; suspended_reason: string | null; };
 
 export default function Dashboard() {
   const router = useRouter();
@@ -38,7 +38,7 @@ export default function Dashboard() {
       const userId = s.session.user.id;
       const { data, error } = await supabase
         .from("profiles")
-        .select("id, full_name, role, avatar_url")
+        .select("id, full_name, role, avatar_url,suspended, suspended_reason")
         .eq("id", userId)
         .maybeSingle();
 
@@ -69,6 +69,21 @@ export default function Dashboard() {
   }
 
   if (!profile) return <Loader full />;
+    if (profile.suspended) {
+    return (
+      <div className="min-h-dvh flex items-center justify-center p-6">
+        <div className="max-w-sm bg-white rounded-3xl shadow-xl p-6 space-y-3 text-center text-gray-900">
+          <p className="text-4xl">⛔</p>
+          <h1 className="text-xl font-bold">Account suspended</h1>
+          {profile.suspended_reason && <p className="text-sm">{profile.suspended_reason}</p>}
+          <p className="text-sm">Please contact support if you think this is a mistake.</p>
+          <button onClick={logout} className="w-full bg-white border-2 border-red-300 text-red-700 font-bold rounded-xl p-3">
+            Log out
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="fixed top-0 left-0 w-full h-dvh overflow-hidden">

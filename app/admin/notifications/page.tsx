@@ -5,6 +5,7 @@ import { supabase } from "@/lib/supabase";
 import Loader from "@/components/Loader";
 import type { Inbox } from "@/lib/inbox";
 import BottomNav from "@/components/BottomNav";
+import AdminNav from "@/components/AdminNav";
 
 type Ev = {
   ts: string;
@@ -90,6 +91,7 @@ export default function NotificationsPage() {
       <div className="max-w-2xl mx-auto space-y-4 text-gray-900">
         <div className="flex items-center justify-between">
           <h1 className="text-2xl font-bold">🔔 Notifications</h1>
+          <AdminNav />
           <Link href="/profile" className="text-sm underline">Back</Link>
         </div>
 

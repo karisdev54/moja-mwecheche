@@ -93,7 +93,7 @@ export default function ProfilePage() {
   
 
   return (
-    <main className="min-h-screen bg-gray-50 p-4 pb-28">
+    <main className="min-h-screen bg-gray-50 p-4 pb-28 stagger">
       <div className="max-w-md mx-auto space-y-4 text-gray-900 stagger">
         <div className="bg-white rounded-2xl shadow p-4 space-y-3">
           <div className="flex items-center gap-4">
