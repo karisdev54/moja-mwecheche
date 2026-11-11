@@ -4,6 +4,9 @@ import { supabase } from "@/lib/supabase";
 import { fmtMinutes, getRoute, type LngLat, type RouteView } from "@/lib/mapbox";
 import Guidance from "@/components/Guidance";
 import PlateBadge from "@/components/PlateBadge";
+import { alertDialog, confirmDialog, promptDialog } from "@/lib/dialog";
+import { Icon, PersonRow, Tile } from "@/components/AdminUI";
+import JobTracker from "@/components/JobTracker";
 
 type Job = {
   id: string;
@@ -60,6 +63,35 @@ function inText(ms: number): string {
   const h = Math.floor(m / 60);
   if (h < 24) return `${h} h ${m % 60} min`;
   return `${Math.floor(h / 24)} d ${h % 24} h`;
+}
+
+const JOB_STATUS: Record<string, { label: string; color: string }> = {
+  requested: { label: "New request", color: "#d97706" },
+  accepted: { label: "Accepted", color: "#2563eb" },
+  in_progress: { label: "In progress", color: "#7c3aed" },
+};
+
+function Pill({ text, color }: { text: string; color: string }) {
+  return (
+    <span
+      className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-bold whitespace-nowrap"
+      style={{ background: `color-mix(in srgb, ${color} 14%, var(--surface))`, color }}
+    >
+      <span className="w-1.5 h-1.5 rounded-full" style={{ background: color }} />
+      {text}
+    </span>
+  );
+}
+
+function Info({ icon, children }: { icon: string; children: React.ReactNode }) {
+  return (
+    <div className="flex items-start gap-2.5 rounded-xl bg-indigo-50 p-2.5 text-sm">
+      <span className="text-indigo-700 mt-0.5">
+        <Icon name={icon} className="w-4 h-4" />
+      </span>
+      <div className="min-w-0 flex-1 break-words">{children}</div>
+    </div>
+  );
 }
 
 export default function DriverJobs({
@@ -188,8 +220,9 @@ export default function DriverJobs({
       .eq("status", "requested")
       .is("driver_id", null)
       .select();
-    if (error) alert(error.message);
-    else if (!data || data.length === 0) alert("Sorry, another driver took this job.");
+        if (error) await alertDialog({ title: "Could not accept", message: error.message });
+    else if (!data || data.length === 0)
+      await alertDialog({ title: "Job already taken", message: "Sorry, another driver took this job." });
     else setTab("mine");
     reload();
   };
@@ -202,7 +235,7 @@ export default function DriverJobs({
       .eq("driver_id", driverId);
 
     if (error) {
-      alert(error.message);
+      await alertDialog({ title: "Could not update the job", message: error.message });
       reload();
       return;
     }
@@ -230,7 +263,7 @@ export default function DriverJobs({
     .sort((a, b) => new Date(a.scheduled_at).getTime() - new Date(b.scheduled_at).getTime());
   const open = jobs.filter((j) => j.status === "requested" && j.driver_id === null && !declined.includes(j.id));
   const nowQ = online ? open.filter((j) => j.timing === "now") : [];
-  const laterQ = open.filter((j) => j.timing === "later");
+  const laterQ = online ? open.filter((j) => j.timing === "later") : [];
 
   const list = tab === "now" ? nowQ : tab === "later" ? laterQ : mine;
 
@@ -244,24 +277,24 @@ export default function DriverJobs({
     : undefined;
   const guideTarget = guideJob ? targetFor(guideJob) : null;
 
-  const tabs: { v: Tab; label: string; n: number }[] = [
-    { v: "now", label: "⚡ Now", n: nowQ.length },
-    { v: "later", label: "📅 Later", n: laterQ.length },
-    { v: "mine", label: "My jobs", n: mine.length },
+    const tabs: { v: Tab; label: string; icon: string; n: number }[] = [
+    { v: "now", label: "Now", icon: "bolt", n: nowQ.length },
+    { v: "later", label: "Later", icon: "calendar", n: laterQ.length },
+    { v: "mine", label: "My jobs", icon: "car", n: mine.length },
   ];
 
-  const empty =
-    tab === "now"
-      ? online
-        ? "No requests within 10 km right now. Stay online and new ones will appear here."
-        : "You are offline. Tap Go online to receive Now requests."
-      : tab === "later"
-        ? hasCar === false
-          ? "No scheduled bookings near you yet. Bookings that need a driver's car are hidden because you have no car."
-          : "No scheduled bookings near you yet. New ones will appear here, even when you are offline."
-        : "You have no accepted jobs yet.";
+    const empty =
+    tab === "mine"
+      ? "You have no accepted jobs yet."
+      : !online
+        ? "You are offline. Tap Go online to see new jobs."
+        : tab === "now"
+          ? "No requests within 10 km right now. Stay online and new ones will appear here."
+          : hasCar === false
+            ? "No scheduled bookings near you yet. Bookings that need a driver's car are hidden because you have no car."
+            : "No scheduled bookings near you yet. New ones will appear here.";
 
-  return (
+    return (
     <div className="space-y-3">
       {guideJob && guideTarget && (
         <Guidance
@@ -273,27 +306,34 @@ export default function DriverJobs({
         />
       )}
 
-      <div className="grid grid-cols-3 gap-2">
-        {tabs.map((t) => (
-          <button
-            key={t.v}
-            onClick={() => setTab(t.v)}
-            className={`rounded-lg border-2 p-2 text-sm font-semibold ${
-              tab === t.v ? "bg-indigo-600 text-white border-indigo-600" : "bg-white border-indigo-200"
-            }`}
-          >
-            {t.label}
-            {t.n > 0 && (
-              <span className="ml-1 inline-flex min-w-5 h-5 px-1 items-center justify-center rounded-full bg-red-600 text-white text-xs font-bold">
-                {t.n}
-              </span>
-            )}
-          </button>
-        ))}
+      <div className="grid grid-cols-3 gap-1 rounded-2xl bg-indigo-100 p-1">
+        {tabs.map((t) => {
+          const on = tab === t.v;
+          return (
+            <button
+              key={t.v}
+              onClick={() => setTab(t.v)}
+              className={`rounded-xl py-2.5 text-sm font-bold flex items-center justify-center gap-1.5 transition-all active:scale-95 ${
+                on ? "bg-white text-indigo-800 shadow" : "text-gray-700"
+              }`}
+            >
+              <Icon name={t.icon} className="w-4 h-4" />
+              {t.label}
+              {t.n > 0 && (
+                <span className="min-w-5 h-5 px-1 rounded-full bg-red-600 text-white text-xs font-bold flex items-center justify-center">
+                  {t.n}
+                </span>
+              )}
+            </button>
+          );
+        })}
       </div>
 
       {list.length === 0 && (
-        <div className="bg-indigo-50 border-2 border-indigo-200 rounded-xl p-3 text-sm text-gray-900">{empty}</div>
+        <div className="flex items-center gap-3 rounded-2xl bg-white border border-indigo-100 p-4 text-sm">
+          <Tile name="inbox" color="#6366f1" size="w-10 h-10" />
+          <p className="flex-1 text-gray-800">{empty}</p>
+        </div>
       )}
 
       {list.map((j) => {
@@ -302,124 +342,162 @@ export default function DriverJobs({
         const guiding = guideId === j.id;
         const startAt = new Date(j.scheduled_at).getTime();
         const canStart = now > 0 && now >= startAt - EARLY_MS;
+        const st = JOB_STATUS[j.status] ?? { label: j.status, color: "#6b7280" };
+        const live = j.status === "accepted" || j.status === "in_progress";
 
         return (
-          <div key={j.id} className="border-2 border-indigo-200 bg-indigo-50 rounded-xl p-3 text-sm text-gray-900">
-            <div className="flex justify-between">
-              <span className="font-bold">{j.task_type}</span>
-              <span className="font-bold text-indigo-800">KES {j.price}</span>
-            </div>
-            <p className="text-gray-700">
-              <span className="font-semibold">{j.timing === "now" ? "⚡ Now" : "📅 Later"}</span> ·{" "}
-              {new Date(j.scheduled_at).toLocaleString()} · {j.duration_hours}h
-            </p>
-            <p className="text-xs">
-              {j.vehicle === "customer_car" ? "🔑 Drive the customer's car" : "🚕 You bring the car"}
-            </p>
-            {j.driver_note && <p className="text-xs italic">Note: “{j.driver_note}”</p>}
+          <article key={j.id} className="slide-in bg-white rounded-2xl shadow overflow-hidden flex">
+            <div className="w-1.5 shrink-0" style={{ background: st.color }} />
+            <div className="flex-1 min-w-0 p-3.5 space-y-3">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <h3 className="font-bold leading-tight">{j.task_type}</h3>
+                  <p className="text-xs text-gray-700 mt-1 flex items-center gap-1.5 flex-wrap">
+                    <Icon name={j.timing === "now" ? "bolt" : "calendar"} className="w-3.5 h-3.5" />
+                    {j.timing === "now" ? "Immediate" : "Scheduled"}
+                    <span aria-hidden="true">·</span>
+                    {new Date(j.scheduled_at).toLocaleString([], { dateStyle: "medium", timeStyle: "short" })}
+                    <span aria-hidden="true">·</span>
+                    {j.duration_hours} h
+                  </p>
+                </div>
+                <div className="text-right shrink-0 space-y-1">
+                  <p className="text-lg font-extrabold leading-tight">KES {Number(j.price).toLocaleString()}</p>
+                  <Pill text={st.label} color={st.color} />
+                </div>
+              </div>
 
-            {(j.status === "accepted" || j.status === "in_progress") && j.customer && (
-              <div className="mt-2 bg-white border-2 border-indigo-200 rounded-lg p-2 text-xs space-y-1">
-                <p>
-                  👤 Customer: <b>{j.customer.full_name || "Customer"}</b>
-                  {j.customer.phone && (
-                    <a href={`tel:${j.customer.phone}`} className="ml-2 text-blue-700 underline font-semibold">
-                      Call
-                    </a>
-                  )}
-                </p>
-                {j.vehicle === "customer_car" && j.customer.car_plate && (
-                  <div className="flex items-center gap-2">
-                    <span>🔑 Their car:</span>
-                    <PlateBadge plate={j.customer.car_plate} small />
-                    {j.customer.car_details && <span>{j.customer.car_details}</span>}
-                  </div>
+              {j.status !== "requested" && <JobTracker status={j.status} paid={j.paid} />}
+
+              <div className="space-y-2">
+                <Info icon={j.vehicle === "customer_car" ? "key" : "car"}>
+                  {j.vehicle === "customer_car" ? "You drive the customer's car" : "You bring the car"}
+                </Info>
+                {j.destination && (
+                  <Info icon="pin">
+                    <span className="font-semibold">{j.destination}</span>
+                    {(j.route_km || j.route_min) && (
+                      <span className="block text-xs text-gray-700">
+                        {j.route_km ? `${j.route_km} km` : ""}
+                        {j.route_km && j.route_min ? " · " : ""}
+                        {j.route_min ? `about ${fmtMinutes(j.route_min)}` : ""}
+                      </span>
+                    )}
+                  </Info>
+                )}
+                {j.driver_note && (
+                  <Info icon="edit">
+                    <span className="italic">“{j.driver_note}”</span>
+                  </Info>
                 )}
               </div>
-            )}
 
-            {j.destination && (
-              <p className="mt-1">
-                📍 To {j.destination}
-                {j.route_km ? ` · ${j.route_km} km` : ""}
-                {j.route_min ? ` · about ${fmtMinutes(j.route_min)}` : ""}
-              </p>
-            )}
+              {live && j.customer && (
+                <PersonRow role="Customer" name={j.customer.full_name} phone={j.customer.phone}>
+                  {j.vehicle === "customer_car" && j.customer.car_plate && (
+                    <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                      <PlateBadge plate={j.customer.car_plate} small />
+                      {j.customer.car_details && <span className="text-xs text-gray-700">{j.customer.car_details}</span>}
+                    </div>
+                  )}
+                </PersonRow>
+              )}
 
-            {shown?.jobId === j.id && (
-              <p className="mt-1 font-semibold text-indigo-800">
-                {shown.label}: {shown.km} km · {fmtMinutes(shown.minutes)} from you
-              </p>
-            )}
+              {shown?.jobId === j.id && (
+                <p className="flex items-center gap-2 text-sm font-semibold text-indigo-800">
+                  <Icon name="pin" className="w-4 h-4" />
+                  {shown.label}: {shown.km} km, {fmtMinutes(shown.minutes)} from you
+                </p>
+              )}
 
-            <div className="flex gap-2 mt-2">
-              <button
-                onClick={() => showRoute(j)}
-                disabled={busyId === j.id || guiding}
-                className="flex-1 bg-white border-2 border-indigo-300 rounded-lg p-2 font-semibold disabled:opacity-50"
-              >
-                {busyId === j.id
-                  ? "Finding..."
-                  : j.status === "requested"
-                    ? "View pickup route"
-                    : t.label === "To pickup"
-                      ? "Route to pickup"
-                      : "Route to destination"}
-              </button>
-              {j.status !== "requested" && (
-                <a
-                  href={navUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="flex-1 bg-blue-600 text-white rounded-lg p-2 font-semibold text-center"
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  onClick={() => showRoute(j)}
+                  disabled={busyId === j.id || guiding}
+                  className={`flex items-center justify-center gap-1.5 rounded-xl border-2 border-indigo-200 bg-white p-2.5 text-sm font-bold disabled:opacity-50 active:scale-95 ${
+                    j.status === "requested" ? "col-span-2" : ""
+                  }`}
                 >
-                  Navigate
-                </a>
+                  <Icon name="pin" className="w-4 h-4" />
+                  {busyId === j.id
+                    ? "Finding..."
+                    : j.status === "requested"
+                      ? "View pickup route"
+                      : t.label === "To pickup"
+                        ? "Route to pickup"
+                        : "Route to destination"}
+                </button>
+                {j.status !== "requested" && (
+                  <a
+                    href={navUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="flex items-center justify-center gap-1.5 rounded-xl bg-blue-600 text-white p-2.5 text-sm font-bold active:scale-95"
+                  >
+                    <Icon name="locate" className="w-4 h-4" />
+                    Navigate
+                  </a>
+                )}
+              </div>
+
+              {j.status !== "requested" && (
+                <button
+                  onClick={() => toggleGuide(j.id)}
+                  className={`w-full flex items-center justify-center gap-2 font-bold rounded-xl p-3 active:scale-[0.98] ${
+                    guiding ? "bg-white border-2 border-red-300 text-red-700" : "btn-shine grad-bg text-white shadow-lg"
+                  }`}
+                >
+                  <Icon name={guiding ? "close" : "trend"} className="w-4 h-4" />
+                  {guiding ? "Stop guidance" : "Guide me"}
+                </button>
+              )}
+
+              {shown?.jobId === j.id && (
+                <button onClick={clearRoute} className="text-xs font-bold underline">
+                  Clear route
+                </button>
+              )}
+              {routeMsg && busyId === null && shown?.jobId !== j.id && (
+                <p className="text-xs text-red-600 font-semibold">{routeMsg}</p>
+              )}
+
+              {j.status === "requested" ? (
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    onClick={() => accept(j.id)}
+                    className="flex items-center justify-center gap-2 bg-green-600 text-white font-bold rounded-xl p-3 active:scale-95"
+                  >
+                    <Icon name="check" className="w-4 h-4" />
+                    Accept
+                  </button>
+                  <button
+                    onClick={() => setDeclined([...declined, j.id])}
+                    className="bg-white border-2 border-indigo-200 font-bold rounded-xl p-3 active:scale-95"
+                  >
+                    Decline
+                  </button>
+                </div>
+              ) : j.status === "accepted" && !j.paid ? (
+                <p className="flex items-start gap-2 rounded-xl bg-amber-50 text-amber-900 text-sm font-semibold p-3">
+                  <Icon name="clock" className="w-4 h-4 mt-0.5" />
+                  Waiting for the customer to pay. You can start once payment is received and the booked time is near.
+                </p>
+              ) : j.status === "accepted" && !canStart ? (
+                <button disabled className="w-full btn-shine grad-bg text-white font-bold rounded-xl p-3.5 opacity-50">
+                  {now === 0 ? "Checking time..." : `Starts in ${inText(startAt - EARLY_MS - now)}`}
+                </button>
+              ) : (
+                NEXT[j.status] && (
+                  <button
+                    onClick={() => advance(j.id, NEXT[j.status].status)}
+                    className="btn-shine grad-bg w-full text-white font-bold rounded-xl p-3.5 shadow-lg active:scale-[0.98]"
+                  >
+                    {NEXT[j.status].label}
+                  </button>
+                )
               )}
             </div>
-
-            {j.status !== "requested" && (
-              <button
-                onClick={() => toggleGuide(j.id)}
-                className={`w-full mt-2 font-bold rounded-lg p-3 ${
-                  guiding ? "bg-white border-2 border-red-300 text-red-700" : "bg-indigo-600 text-white"
-                }`}
-              >
-                {guiding ? "Stop guidance" : "🧭 Guide me"}
-              </button>
-            )}
-
-            {shown?.jobId === j.id && (
-              <button onClick={clearRoute} className="text-xs underline mt-1">Clear route</button>
-            )}
-            {routeMsg && busyId === null && shown?.jobId !== j.id && (
-              <p className="text-xs text-red-600 mt-1">{routeMsg}</p>
-            )}
-
-            {j.status === "requested" ? (
-              <div className="flex gap-2 mt-2">
-                <button onClick={() => accept(j.id)} className="flex-1 bg-green-600 text-white font-bold rounded-lg p-3">Accept</button>
-                <button onClick={() => setDeclined([...declined, j.id])} className="flex-1 bg-white border-2 border-indigo-200 rounded-lg p-3">Decline</button>
-              </div>
-            ) : j.status === "accepted" && !j.paid ? (
-              <p className="mt-2 text-xs text-gray-900 bg-white rounded-lg p-2 border border-indigo-200">
-                Waiting for the customer to pay. You can start once payment is received and the booked time is near.
-              </p>
-            ) : j.status === "accepted" && !canStart ? (
-              <button
-                disabled
-                className="w-full mt-2 bg-indigo-600 text-white font-bold rounded-lg p-3 opacity-50"
-              >
-                {now === 0 ? "Checking time..." : `Starts in ${inText(startAt - EARLY_MS - now)}`}
-              </button>
-            ) : (
-              NEXT[j.status] && (
-                <button onClick={() => advance(j.id, NEXT[j.status].status)} className="w-full mt-2 bg-indigo-600 text-white font-bold rounded-lg p-3">
-                  {NEXT[j.status].label}
-                </button>
-              )
-            )}
-          </div>
+          </article>
         );
       })}
     </div>

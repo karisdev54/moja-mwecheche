@@ -2,9 +2,13 @@ import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import MotionProvider from "@/components/MotionProvider";
-import OfflineBanner from "@/components/OfflineBanner";
 import RegisterSW from "@/components/RegisterSW";
 import BottomNav from "@/components/BottomNav";
+import Toaster from "@/components/Toaster";
+import AdminToaster from "@/components/AdminToaster";
+import SuspensionGate from "@/components/SuspensionGate";
+import OfflineGate from "@/components/OfflineGate";
+import DialogHost from "@/components/DialogHost";
 
 const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
 const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
@@ -41,9 +45,13 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         <script dangerouslySetInnerHTML={{ __html: themeScript }} />
       </head>
             <body className="min-h-full flex flex-col">
-        <MotionProvider>
-          <OfflineBanner />
+                        <MotionProvider>
+          <OfflineGate />
           <RegisterSW />
+          <Toaster />
+          <AdminToaster />
+          <SuspensionGate />
+          <DialogHost />
           {children}
           <BottomNav />
         </MotionProvider>

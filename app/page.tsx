@@ -1,167 +1,182 @@
-"use client";
 import Link from "next/link";
-import { motion } from "motion/react";
 import AutoRedirect from "@/components/AutoRedirect";
 import Brand from "@/components/Brand";
 import PlateBadge from "@/components/PlateBadge";
-import Reveal from "@/components/motion/Reveal";
-import { Item, Stagger } from "@/components/motion/Stagger";
+import JobTracker from "@/components/JobTracker";
+import { Icon, Tile } from "@/components/AdminUI";
+
+const FEATURES = [
+  { icon: "verify", color: "#6366f1", title: "Verified drivers", text: "ID and licence checked" },
+  { icon: "wallet", color: "#10b981", title: "Pay with M-Pesa", text: "Secure, in the app" },
+  { icon: "pin", color: "#0ea5e9", title: "Live tracking", text: "See your driver arrive" },
+];
 
 const STEPS = [
-  { n: "1", title: "Tell us the task", text: "Airport transfer, wedding, business trip or an errand. Choose Now or Later." },
-  { n: "2", title: "A nearby driver accepts", text: "Verified drivers close to you see your request. You see their name, rating and car plate." },
-  { n: "3", title: "Pay with M-Pesa", text: "Pay securely in the app. The driver starts once payment is confirmed." },
+  { icon: "list", title: "Tell us the task", text: "Airport transfer, wedding, business trip or an errand. Choose Now or Later." },
+  { icon: "car", title: "A driver accepts", text: "Verified drivers near you see your request. You see their name, rating and car plate." },
+  { icon: "wallet", title: "Pay and go", text: "Pay securely in the app. The driver starts once your payment is confirmed." },
 ];
 
 const SAFETY = [
-  { icon: "🪪", text: "Every driver uploads an ID and driving licence that we check before they can go online" },
-  { icon: "📍", text: "See your driver's rating, car plate and live position on the map" },
-  { icon: "🔒", text: "Pay only through the app, never in cash on the road" },
+  { icon: "idcard", title: "Documents checked", text: "Every driver uploads an ID and driving licence that we review before they can go online." },
+  { icon: "car", title: "Verified vehicles", text: "Car plates are checked against the logbook, so you know which car to look for." },
+  { icon: "lock", title: "Safe payments", text: "Pay only through the app, never in cash on the road." },
 ];
+
+const PERKS = ["Keep 85% of every job", "Weekly payouts to your M-Pesa", "Jobs near you, on your schedule", "Build your reputation with ratings"];
 
 export default function Home() {
   return (
     <main className="min-h-screen overflow-x-hidden text-gray-900" style={{ background: "var(--bg)" }}>
       <AutoRedirect />
 
-      {/* Hero */}
-      <section className="relative overflow-hidden px-4 pt-6 pb-20">
+      <section className="relative overflow-hidden px-4 pt-5 pb-16">
         <div className="aurora pointer-events-none" />
         <div className="relative z-10 max-w-2xl mx-auto">
-          <div className="flex items-center justify-between">
+          <header className="flex items-center justify-between">
             <Brand />
-            <Link href="/login" className="glass rounded-full px-4 py-2 text-sm font-semibold">
+            <Link href="/login" className="glass inline-flex items-center rounded-full px-4 py-2 text-sm font-bold active:scale-95">
               Log in
             </Link>
+          </header>
+
+          <div className="stagger text-center pt-12 space-y-5">
+            <div>
+              <span className="glass inline-flex items-center gap-2 rounded-full px-4 py-1.5 text-xs font-bold">
+                <span className="text-indigo-600">
+                  <Icon name="bolt" className="w-3.5 h-3.5" />
+                </span>
+                Hire a driver in minutes
+              </span>
+            </div>
+            <h1 className="text-4xl sm:text-5xl font-extrabold leading-[1.1] tracking-tight">
+              Hire a <span className="gradient-text">trusted driver</span> for any task or occasion
+            </h1>
+            <p className="text-lg text-gray-700 max-w-md mx-auto">
+              A few hours, a wedding, or a trip across town. Book a verified driver near you.
+            </p>
+            <div className="flex flex-col sm:flex-row gap-3 justify-center pt-2">
+              <Link href="/login?mode=signup&role=customer" className="btn-shine grad-bg inline-flex items-center justify-center gap-2 text-white font-bold rounded-2xl px-6 py-4 shadow-xl active:scale-95">
+                <Icon name="car" className="w-5 h-5" />
+                Hire a driver
+              </Link>
+              <Link href="/login?mode=signup&role=driver" className="glass inline-flex items-center justify-center gap-2 font-bold rounded-2xl px-6 py-4 active:scale-95">
+                <Icon name="key" className="w-5 h-5" />
+                Become a driver
+              </Link>
+            </div>
           </div>
 
-          <Stagger className="text-center pt-14 space-y-5" gap={0.1}>
-            <Item>
-              <span className="glass inline-block rounded-full px-4 py-1 text-xs font-bold">
-                🚗 Hire a driver in minutes
-              </span>
-            </Item>
-            <Item>
-              <h1 className="text-4xl sm:text-5xl font-extrabold leading-tight">
-                Hire a <span className="gradient-text">trusted driver</span> for any task or occasion
-              </h1>
-            </Item>
-            <Item>
-              <p className="text-lg text-gray-700">
-                A few hours, a wedding, or a trip across town. Book a verified driver near you.
-              </p>
-            </Item>
-            <Item>
-              <div className="flex flex-col sm:flex-row gap-3 justify-center pt-2">
-                <motion.div whileTap={{ scale: 0.97 }}>
-                  <Link
-                    href="/login?mode=signup&role=customer"
-                    className="btn-shine grad-bg block text-white font-bold rounded-2xl px-6 py-4 shadow-xl"
-                  >
-                    Hire a driver
-                  </Link>
-                </motion.div>
-                <motion.div whileTap={{ scale: 0.97 }}>
-                  <Link
-                    href="/login?mode=signup&role=driver"
-                    className="glass block font-bold rounded-2xl px-6 py-4"
-                  >
-                    Become a driver
-                  </Link>
-                </motion.div>
+          <div className="mt-12 anim-rise" style={{ animationDelay: "0.5s" }}>
+            <div className="float mx-auto max-w-xs bg-white rounded-3xl shadow-2xl overflow-hidden text-left">
+              <div className="h-1.5 grad-bg" />
+              <div className="p-4 space-y-3">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="font-bold">Airport transfer</p>
+                  <span className="rounded-full px-2.5 py-1 text-xs font-bold" style={{ background: "color-mix(in srgb, #2563eb 14%, var(--surface))", color: "#2563eb" }}>
+                    Accepted
+                  </span>
+                </div>
+                <JobTracker status="accepted" paid />
+                <div className="flex items-center gap-3 rounded-xl border border-indigo-100 p-3 stagger">
+                  <span className="w-10 h-10 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold">J</span>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[11px] font-bold uppercase tracking-wider text-gray-700">Your driver</p>
+                    <p className="text-sm font-semibold">James M.</p>
+                  </div>
+                  <PlateBadge plate="KDA123A" small verified />
+                </div>
               </div>
-            </Item>
-          </Stagger>
-
-          {/* A preview of the app, floating gently */}
-          <motion.div
-            initial={{ opacity: 0, y: 40 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.6, duration: 0.7, ease: [0.2, 0.8, 0.2, 1] }}
-            className="mt-14"
-          >
-            <div className="float glass mx-auto max-w-xs rounded-3xl p-4 shadow-2xl space-y-3 text-left">
-              <div className="flex items-center justify-between">
-                <p className="font-bold">Airport transfer</p>
-                <span className="text-xs font-bold bg-blue-100 text-blue-900 rounded-full px-2 py-1">Accepted</span>
-              </div>
-              <PlateBadge plate="KDA123A" />
-              <div className="h-2 rounded-full bg-indigo-200 overflow-hidden">
-                <motion.div
-                  className="h-2 rounded-full grad-bg"
-                  initial={{ width: "10%" }}
-                  animate={{ width: "70%" }}
-                  transition={{ delay: 1.2, duration: 1.6, ease: "easeInOut" }}
-                />
-              </div>
-              <p className="text-xs">Your driver is on the way. Preview</p>
             </div>
-          </motion.div>
+            <p className="text-center text-xs text-gray-700 mt-3">A preview of the app</p>
+          </div>
         </div>
       </section>
 
-      {/* How it works */}
-      <section className="px-4 py-12 max-w-3xl mx-auto">
-        <Reveal>
-          <h2 className="text-2xl font-bold text-center mb-8">How it works</h2>
-        </Reveal>
-        <div className="grid gap-4 sm:grid-cols-3">
-          {STEPS.map((s, i) => (
-            <Reveal key={s.n} delay={i * 0.1}>
-              <div className="lift bg-white rounded-2xl shadow p-5 space-y-2 h-full">
-                <div className="grad-bg w-10 h-10 rounded-full text-white flex items-center justify-center font-bold">
-                  {s.n}
-                </div>
-                <h3 className="font-semibold">{s.title}</h3>
-                <p className="text-sm text-gray-700">{s.text}</p>
+      <section className="px-4 -mt-4 pb-6 max-w-3xl mx-auto">
+        <div className="grid grid-cols-3 gap-3">
+          {FEATURES.map((f) => (
+            <div key={f.title} className="lift bg-white rounded-2xl shadow p-3 text-center space-y-2">
+              <div className="flex justify-center">
+                <Tile name={f.icon} color={f.color} />
               </div>
-            </Reveal>
+              <p className="text-sm font-bold leading-tight">{f.title}</p>
+              <p className="text-xs text-gray-700">{f.text}</p>
+            </div>
           ))}
         </div>
       </section>
 
-      {/* Safety */}
-      <section className="px-4 py-12 max-w-2xl mx-auto">
-        <Reveal>
-          <div className="bg-white rounded-3xl shadow-lg p-6 space-y-4">
-            <h2 className="text-2xl font-bold">Safety first</h2>
-            {SAFETY.map((s, i) => (
-              <Reveal key={s.text} delay={i * 0.1} y={14}>
-                <div className="flex gap-3 items-start">
-                  <span className="text-2xl">{s.icon}</span>
-                  <p className="text-gray-800">{s.text}</p>
-                </div>
-              </Reveal>
-            ))}
+      <section className="px-4 py-12 max-w-3xl mx-auto">
+        <h2 className="text-2xl font-extrabold tracking-tight text-center">How it works</h2>
+        <p className="text-sm text-gray-700 text-center mt-1 mb-8">Three steps from request to arrival</p>
+        <div className="grid gap-4 sm:grid-cols-3">
+          {STEPS.map((s, i) => (
+            <div key={s.title} className="lift bg-white rounded-2xl shadow p-5 space-y-3">
+              <div className="flex items-center justify-between">
+                <Tile name={s.icon} color="#6366f1" size="w-11 h-11" />
+                <span className="text-3xl font-extrabold text-indigo-100">{i + 1}</span>
+              </div>
+              <h3 className="font-bold">{s.title}</h3>
+              <p className="text-sm text-gray-700">{s.text}</p>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section className="px-4 py-8 max-w-2xl mx-auto">
+        <div className="bg-white rounded-3xl shadow-lg p-6 space-y-5">
+          <div>
+            <h2 className="text-2xl font-extrabold tracking-tight">Safety first</h2>
+            <p className="text-sm text-gray-700">Trust is built into every trip.</p>
           </div>
-        </Reveal>
+          {SAFETY.map((s) => (
+            <div key={s.title} className="flex items-start gap-3">
+              <Tile name={s.icon} color="#10b981" />
+              <div>
+                <p className="font-bold">{s.title}</p>
+                <p className="text-sm text-gray-700">{s.text}</p>
+              </div>
+            </div>
+          ))}
+        </div>
       </section>
 
-      {/* Driver call to action */}
-      <section className="px-4 py-12 max-w-2xl mx-auto text-center space-y-4">
-        <Reveal>
-          <h2 className="text-2xl font-bold">Are you a driver?</h2>
-        </Reveal>
-        <Reveal delay={0.1}>
-          <p className="text-gray-700">
-            Sign up, upload your documents, get approved, and start accepting jobs near you. Get paid weekly by M-Pesa.
-          </p>
-        </Reveal>
-        <Reveal delay={0.2}>
-          <motion.div whileTap={{ scale: 0.97 }} className="inline-block">
-            <Link
-              href="/login?mode=signup&role=driver"
-              className="btn-shine grad-bg inline-block text-white font-bold rounded-2xl px-6 py-4 shadow-xl"
-            >
-              Join as a driver
-            </Link>
-          </motion.div>
-        </Reveal>
+      <section className="px-4 py-10 max-w-2xl mx-auto">
+        <div
+          className="relative overflow-hidden rounded-3xl p-6 text-white shadow-xl sheen space-y-4"
+          style={{ background: "linear-gradient(135deg,#312e81 0%,#4338ca 50%,#0e7490 100%)" }}
+        >
+          <div>
+            <h2 className="text-yellow-400 text-2xl font-extrabold tracking-tight">Are you a driver?</h2>
+            <p className="text-sm text-white/85 mt-1">Sign up, upload your documents, get approved, and start earning near you.</p>
+          </div>
+          <ul className="grid gap-2">
+            {PERKS.map((p) => (
+              <li key={p} className="flex items-center gap-2.5 text-sm">
+                <span className="w-5 h-5 rounded-full bg-white/20 flex items-center justify-center shrink-0">
+                  <Icon name="tick" className="w-3 h-3" />
+                </span>
+                {p}
+              </li>
+            ))}
+          </ul>
+          <Link href="/login?mode=signup&role=driver" className="btn-shine inline-flex items-center justify-center gap-2 bg-white text-indigo-800 font-bold rounded-2xl px-6 py-3.5 active:scale-95">
+            Join as a driver
+            <Icon name="chevron" className="w-4 h-4" />
+          </Link>
+        </div>
       </section>
 
-      <footer className="px-4 py-8 text-center text-sm text-gray-700 space-x-4">
-        <Link href="/terms" className="underline">Terms</Link>
-        <Link href="/privacy" className="underline">Privacy</Link>
+      <footer className="px-4 py-8 text-center space-y-2">
+        <div className="flex justify-center">
+          <Brand size={32} />
+        </div>
+        <p className="text-sm text-gray-700 space-x-4">
+          <Link href="/terms" className="btn-shine inline-flex items-center justify-center gap-2 bg-white text-indigo-800 font-bold rounded-2xl px-6 py-3.5 active:scale-95">Terms</Link>
+          <Link href="/privacy" className="btn-shine inline-flex items-center justify-center gap-2 bg-white text-indigo-800 font-bold rounded-2xl px-6 py-3.5 active:scale-95">Privacy</Link>
+         
+        </p>
       </footer>
     </main>
   );

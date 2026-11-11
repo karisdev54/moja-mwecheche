@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="color-scheme" content="light dark" />
+  <title>Network error</title>
+  <style>
+    :root { --bg: #f5f7ff; --surface: #ffffff; --fg: #111827; --muted: #4b5563; --tint: #eef2ff; --line: #c7d2fe; --shadow: rgba(67, 56, 202, .18); }
+    @media (prefers-color-scheme: dark) {
+      :root { --bg: #0b1020; --surface: #141a2e; --fg: #e8ecf8; --muted: #a5b0cc; --tint: #1b2340; --line: #2a3358; --shadow: rgba(0, 0, 0, .5); }
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center;
+           padding: max(20px, env(safe-area-inset-top)) 20px max(20px, env(safe-area-inset-bottom));
+           font-family: Arial, Helvetica, sans-serif; background: linear-gradient(160deg, var(--bg), var(--surface)); color: var(--fg); }
+    .card { width: 100%; max-width: 360px; background: var(--surface); border-radius: 28px; overflow: hidden;
+            box-shadow: 0 24px 60px var(--shadow); animation: pop .5s cubic-bezier(.2,.9,.3,1.2) both; }
+    .strip { height: 6px; background: linear-gradient(90deg, #dc2626, #f97316); }
+    .body { padding: 28px 24px; text-align: center; }
+    .icon { position: relative; width: 80px; height: 80px; margin: 0 auto 16px; }
+    .ring { position: absolute; inset: 0; border-radius: 50%; background: rgba(220, 38, 38, .25); animation: ring 1.8s ease-out infinite; }
+    .disc { position: relative; width: 80px; height: 80px; border-radius: 50%; background: rgba(220, 38, 38, .14);
+            display: flex; align-items: center; justify-content: center; color: #dc2626; }
+    h1 { margin: 0 0 6px; font-size: 24px; letter-spacing: -.01em; }
+    p { margin: 0 0 18px; font-size: 14px; line-height: 1.55; color: var(--muted); }
+    ul { list-style: none; margin: 0 0 18px; padding: 12px 14px; text-align: left; background: var(--tint); border: 1px solid var(--line); border-radius: 16px; }
+    li { display: flex; align-items: center; gap: 10px; font-size: 13px; padding: 5px 0; }
+    li svg { flex: none; color: #6366f1; }
+    button { width: 100%; border: 0; border-radius: 16px; padding: 16px; font-size: 16px; font-weight: 700; color: #fff; cursor: pointer;
+             background: linear-gradient(90deg, #4338ca, #0e7490); }
+    button:active { transform: scale(.98); }
+    .wait { margin: 14px 0 0; font-size: 12px; display: flex; align-items: center; justify-content: center; gap: 8px; }
+    .spin { width: 12px; height: 12px; border-radius: 50%; border: 2px solid var(--line); border-top-color: #4338ca; animation: spin .8s linear infinite; }
+    @keyframes ring { from { transform: scale(.7); opacity: .9; } to { transform: scale(1.7); opacity: 0; } }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    @keyframes pop { from { opacity: 0; transform: scale(.9) translateY(20px); } to { opacity: 1; transform: none; } }
+    @media (prefers-reduced-motion: reduce) { * { animation: none !important; } }
+  </style>
+</head>
+<body>
+  <div class="card" role="alert">
+    <div class="strip"></div>
+    <div class="body">
+      <div class="icon">
+        <span class="ring"></span>
+        <span class="disc">
+          <svg width="38" height="38" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M5 12.5a10 10 0 0 1 14 0" /><path d="M8.5 16a5 5 0 0 1 7 0" /><path d="M12 19.5h.01" /><path d="M3 3l18 18" />
+          </svg>
+        </span>
+      </div>
+      <h1>Network error</h1>
+      <p>You are offline, or our servers cannot be reached. Check your connection, then try again.</p>
+      <ul>
+        <li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5L20 7"/></svg>Check that Wi-Fi or mobile data is on</li>
+        <li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5L20 7"/></svg>Turn airplane mode off</li>
+        <li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5L20 7"/></svg>Move to a place with better signal</li>
+      </ul>
+      <button onclick="location.reload()">Reload the page</button>
+      <p class="wait"><span class="spin"></span>Checking the connection automatically</p>
+    </div>
+  </div>
+  <script>
+    function check() {
+      fetch("/icon-192.png?ping=" + Date.now(), { method: "HEAD", cache: "no-store" })
+        .then(function (r) { if (r.ok) location.reload(); })
+        .catch(function () {});
+    }
+    window.addEventListener("online", check);
+    setInterval(check, 4000);
+  </script>
+</body>
+</html>

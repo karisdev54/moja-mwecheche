@@ -1,4 +1,6 @@
+
 "use client";
+
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
@@ -6,6 +8,7 @@ import Loader from "@/components/Loader";
 import type { Inbox } from "@/lib/inbox";
 import BottomNav from "@/components/BottomNav";
 import AdminNav from "@/components/AdminNav";
+import { PageHeader } from "@/components/AdminUI";
 
 type Ev = {
   ts: string;
@@ -15,33 +18,55 @@ type Ev = {
   detail: string;
   amount: number | null;
 };
-type State = { inbox: Inbox | null; feed: Ev[]; at: number };
 
-const ICON: Record<string, string> = {
-  signup: "👤",
-  booking: "🚗",
-  payment: "💰",
-  completed: "✅",
-  payout: "💸",
-  refund: "↩️",
-  report: "🚩",
+type State = {
+  inbox: Inbox | null;
+  feed: Ev[];
+  at: number;
 };
-const kes = (n: number) => `KES ${Math.round(Number(n)).toLocaleString()}`;
+
+type TodoItem = {
+  title: string;
+  detail: string;
+  href?: string;
+  tone: "red" | "amber" | "indigo";
+};
+
+const kes = (n: number) =>
+  `KES ${Math.round(Number(n)).toLocaleString()}`;
 
 function ago(iso: string, now: number) {
-  const s = Math.max(1, Math.round((now - new Date(iso).getTime()) / 1000));
-  if (s < 60) return "just now";
-  const m = Math.round(s / 60);
-  if (m < 60) return `${m} min ago`;
-  const h = Math.round(m / 60);
-  if (h < 24) return `${h} h ago`;
-  return new Date(iso).toLocaleDateString();
+  const seconds = Math.max(
+    1,
+    Math.round((now - new Date(iso).getTime()) / 1000)
+  );
+
+  if (seconds < 60) return "Just now";
+
+  const minutes = Math.round(seconds / 60);
+  if (minutes < 60) return `${minutes} minutes ago`;
+
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return `${hours} hours ago`;
+
+  return new Date(iso).toLocaleDateString([], {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
 }
 
 async function load(): Promise<State> {
   const { data: inbox } = await supabase.rpc("admin_inbox");
-  const { data: feed } = await supabase.rpc("admin_feed", { p_limit: 40 });
-  return { inbox: (inbox as Inbox | null) ?? null, feed: (feed ?? []) as Ev[], at: Date.now() };
+  const { data: feed } = await supabase.rpc("admin_feed", {
+    p_limit: 40,
+  });
+
+  return {
+    inbox: (inbox as Inbox | null) ?? null,
+    feed: (feed ?? []) as Ev[],
+    at: Date.now(),
+  };
 }
 
 export default function NotificationsPage() {
@@ -49,108 +74,389 @@ export default function NotificationsPage() {
 
   useEffect(() => {
     let active = true;
-    const run = () =>
-      load().then((s) => {
-        if (active) setState(s);
+
+    const run = () => {
+      load().then((result) => {
+        if (active) setState(result);
       });
+    };
+
     run();
-    const t = setInterval(run, 30000);
+
+    const timer = setInterval(run, 30000);
+
     return () => {
       active = false;
-      clearInterval(t);
+      clearInterval(timer);
     };
   }, []);
 
   if (!state) return <Loader full />;
+
   if (!state.inbox) {
     return (
-      <p className="p-6">
-        Not authorized. <Link href="/login" className="underline">Log in as admin</Link>
-      </p>
+      <main className="min-h-screen bg-gray-50 p-4 text-gray-900">
+        <p className="max-w-2xl mx-auto">
+          Not authorized.{" "}
+          <Link href="/login" className="font-semibold text-indigo-600 underline">
+            Log in as admin
+          </Link>
+        </p>
+      </main>
     );
   }
 
-  const i = state.inbox;
-  const todo: { icon: string; text: string; href?: string; tone: string }[] = [];
-  if (i.reports_safety > 0)
-    todo.push({ icon: "🚨", text: `${i.reports_safety} safety report${i.reports_safety > 1 ? "s" : ""} need you now`, href: "/admin/reports", tone: "border-red-500 bg-red-50 text-red-800" });
-  if (i.drivers_pending > 0)
-    todo.push({ icon: "🪪", text: `${i.drivers_pending} driver${i.drivers_pending > 1 ? "s" : ""} waiting for verification`, href: "/admin", tone: "border-amber-400 bg-amber-50 text-amber-900" });
-  if (i.owed_drivers > 0)
-    todo.push({ icon: "💸", text: `You owe ${kes(i.owed_total)} to ${i.owed_drivers} driver${i.owed_drivers > 1 ? "s" : ""}`, href: "/admin/payouts", tone: "border-amber-400 bg-amber-50 text-amber-900" });
-  if (i.refunds_count > 0)
-    todo.push({ icon: "↩️", text: `${i.refunds_count} refund${i.refunds_count > 1 ? "s" : ""} to send (${kes(i.refunds_amount)})`, href: "/admin/refunds", tone: "border-amber-400 bg-amber-50 text-amber-900" });
-  const plainReports = i.reports_open - i.reports_safety;
-  if (plainReports > 0)
-    todo.push({ icon: "💬", text: `${plainReports} open report${plainReports > 1 ? "s" : ""}`, href: "/admin/reports", tone: "border-indigo-300 bg-indigo-50 text-indigo-900" });
-  if (i.stuck_payments > 0)
-    todo.push({ icon: "⚠️", text: `${i.stuck_payments} payment${i.stuck_payments > 1 ? "s" : ""} pending over 15 minutes. Check the payments table.`, tone: "border-indigo-300 bg-indigo-50 text-indigo-900" });
+  const inbox = state.inbox;
+
+  const todo: TodoItem[] = [];
+
+  if (inbox.reports_safety > 0) {
+    todo.push({
+      title: "Safety reports require attention",
+      detail: `${inbox.reports_safety} safety report${
+        inbox.reports_safety > 1 ? "s are" : " is"
+      } awaiting administrator review.`,
+      href: "/admin/reports",
+      tone: "red",
+    });
+  }
+
+  if (inbox.drivers_pending > 0) {
+    todo.push({
+      title: "Driver verification pending",
+      detail: `${inbox.drivers_pending} driver${
+        inbox.drivers_pending > 1 ? "s are" : " is"
+      } waiting for document verification.`,
+      href: "/admin",
+      tone: "amber",
+    });
+  }
+
+  if (inbox.owed_drivers > 0) {
+    todo.push({
+      title: "Driver payouts outstanding",
+      detail: `${kes(inbox.owed_total)} is owed to ${
+        inbox.owed_drivers
+      } driver${inbox.owed_drivers > 1 ? "s" : ""}.`,
+      href: "/admin/payouts",
+      tone: "amber",
+    });
+  }
+
+  if (inbox.refunds_count > 0) {
+    todo.push({
+      title: "Customer refunds awaiting payment",
+      detail: `${inbox.refunds_count} refund${
+        inbox.refunds_count > 1 ? "s" : ""
+      } totalling ${kes(inbox.refunds_amount)} need to be processed.`,
+      href: "/admin/refunds",
+      tone: "amber",
+    });
+  }
+
+  const plainReports = inbox.reports_open - inbox.reports_safety;
+
+  if (plainReports > 0) {
+    todo.push({
+      title: "Open customer reports",
+      detail: `${plainReports} report${
+        plainReports > 1 ? "s are" : " is"
+      } waiting for review.`,
+      href: "/admin/reports",
+      tone: "indigo",
+    });
+  }
+
+  if (inbox.stuck_payments > 0) {
+    todo.push({
+      title: "Payments need investigation",
+      detail: `${inbox.stuck_payments} payment${
+        inbox.stuck_payments > 1 ? "s have" : " has"
+      } remained pending for more than 15 minutes. Check the payments table.`,
+      tone: "indigo",
+    });
+  }
+
+  const feed = state.feed;
+
+  const toneStyles = {
+    red: "border-red-200 border-l-red-500 bg-red-50",
+    amber: "border-amber-200 border-l-amber-500 bg-amber-50",
+    indigo: "border-indigo-200 border-l-indigo-500 bg-indigo-50",
+  };
 
   return (
     <main className="min-h-screen bg-gray-50 p-4 pb-28">
-      <div className="max-w-2xl mx-auto space-y-4 text-gray-900">
-        <div className="flex items-center justify-between">
-          <h1 className="text-2xl font-bold">🔔 Notifications</h1>
-          <AdminNav />
-          <Link href="/profile" className="text-sm underline">Back</Link>
+      <div className="max-w-2xl mx-auto space-y-5 text-gray-900">
+
+        {/* PAGE HEADER */}
+        <div className="slide-in">
+          <PageHeader
+            title="Notifications"
+            subtitle="Platform updates, outstanding tasks and recent activity."
+          />
         </div>
 
-        <h2 className="text-lg font-bold">Needs your attention</h2>
-        {todo.length === 0 && (
-          <p className="bg-green-50 border-2 border-green-300 text-green-800 font-semibold rounded-xl p-4">
-            ✅ All caught up. Nothing is waiting for you.
-          </p>
-        )}
-        {todo.map((t) => {
-          const body = (
-            <div className={`border-2 rounded-xl p-3 font-semibold flex items-center gap-3 ${t.tone}`}>
-              <span className="text-2xl">{t.icon}</span>
-              <span className="flex-1">{t.text}</span>
-              {t.href && <span>›</span>}
-            </div>
-          );
-          return t.href ? (
-            <Link key={t.text} href={t.href} className="block">{body}</Link>
-          ) : (
-            <div key={t.text}>{body}</div>
-          );
-        })}
+        
+          <AdminNav />
+        
 
-        <h2 className="text-lg font-bold pt-2">Activity: what came in and what went out</h2>
-        {state.feed.length === 0 && <p>Nothing has happened yet.</p>}
-        {state.feed.map((e, idx) => {
-          const money = e.kind === "payment" || e.kind === "payout" || e.kind === "refund";
-          return (
-            <div key={`${e.ts}-${idx}`} className="bg-white rounded-xl shadow p-3 flex items-center gap-3 text-sm">
-              <span className="text-2xl">{ICON[e.kind] ?? "•"}</span>
-              <div className="flex-1 min-w-0">
-                <p className="font-semibold truncate">{e.title}</p>
-                <p className="text-xs text-gray-700 truncate">
-                  {e.detail} · {ago(e.ts, state.at)}
-                </p>
-              </div>
-              <div className="text-right shrink-0">
-                {e.direction !== "info" && (
-                  <span
-                    className={`text-xs font-bold px-2 py-0.5 rounded-full ${
-                      e.direction === "in" ? "bg-green-100 text-green-900" : "bg-red-100 text-red-900"
-                    }`}
-                  >
-                    {e.direction === "in" ? "In" : "Out"}
-                  </span>
-                )}
-                {e.amount !== null && Number(e.amount) > 0 && (
-                  <p className={`font-bold ${money ? (e.direction === "in" ? "text-green-700" : "text-red-600") : "text-gray-700"}`}>
-                    {money ? (e.direction === "in" ? "+" : "−") : ""}
-                    {kes(Number(e.amount))}
-                  </p>
-                )}
-              </div>
+        {/* SUMMARY */}
+        <section
+          className="grid grid-cols-3 gap-2 slide-in"
+          style={{ animationDelay: "100ms" }}
+        >
+          <div className="bg-white rounded-2xl shadow p-3">
+            <p className="text-2xl font-extrabold tracking-tight text-gray-900">
+              {todo.length}
+            </p>
+            <p className="text-xs font-medium text-gray-500 mt-1">
+              Pending actions
+            </p>
+          </div>
+
+          <div className="bg-white rounded-2xl shadow p-3">
+            <p className="text-2xl font-extrabold tracking-tight text-gray-900">
+              {feed.length}
+            </p>
+            <p className="text-xs font-medium text-gray-500 mt-1">
+              Activity records
+            </p>
+          </div>
+
+          <div className="bg-white rounded-2xl shadow p-3">
+            <p className="text-2xl font-extrabold tracking-tight text-indigo-600">
+              30s
+            </p>
+            <p className="text-xs font-medium text-gray-500 mt-1">
+              Refresh interval
+            </p>
+          </div>
+        </section>
+
+        {/* ACTION CENTRE */}
+        <section className="bg-white rounded-2xl shadow p-4 space-y-3 slide-in"
+          style={{ animationDelay: "150ms" }}
+        >
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="text-xs font-bold uppercase tracking-wider text-indigo-600">
+                Administrator overview
+              </p>
+              <h2 className="text-lg font-extrabold mt-1">
+                Action centre
+              </h2>
+              <p className="text-sm text-gray-500 mt-1">
+                Review the tasks that need your attention.
+              </p>
             </div>
-          );
-        })}
-        <p className="text-xs text-gray-700 text-center">Updates every 30 seconds.</p>
+
+            <span className="shrink-0 rounded-xl bg-indigo-50 text-indigo-700 px-3 py-2 text-center">
+              <span className="block text-xl font-extrabold">
+                {todo.length}
+              </span>
+              <span className="block text-[10px] font-bold uppercase">
+                Pending
+              </span>
+            </span>
+          </div>
+
+          <div className="border-t border-gray-100" />
+
+          {todo.length === 0 ? (
+            <div className="rounded-xl border border-green-200 bg-green-50 p-5 text-center">
+              <p className="font-extrabold text-green-800">
+                Everything is up to date
+              </p>
+              <p className="text-sm text-green-700 mt-1">
+                There are no outstanding administrator tasks at the moment.
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {todo.map((item, index) => {
+                const content = (
+                  <div
+                    className={`rounded-xl border border-l-4 p-3 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md ${toneStyles[item.tone]}`}
+                    style={{
+                      animationDelay: `${index * 60}ms`,
+                    }}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <h3 className="text-sm font-bold text-gray-900">
+                          {item.title}
+                        </h3>
+                        <p className="text-xs text-gray-600 leading-relaxed mt-1">
+                          {item.detail}
+                        </p>
+
+                        {item.href && (
+                          <p className="text-xs font-bold text-indigo-700 mt-2">
+                            Review this task
+                          </p>
+                        )}
+
+                        {!item.href && (
+                          <p className="text-xs font-semibold text-gray-500 mt-2">
+                            Administrator action required
+                          </p>
+                        )}
+                      </div>
+
+                      {item.href && (
+                        <span className="text-xs font-bold text-indigo-700 shrink-0">
+                          View
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                );
+
+                return item.href ? (
+                  <Link
+                    key={item.title}
+                    href={item.href}
+                    className="block slide-in"
+                  >
+                    {content}
+                  </Link>
+                ) : (
+                  <div key={item.title} className="slide-in">
+                    {content}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </section>
+
+        {/* ACTIVITY FEED */}
+        <section className="space-y-3">
+
+          <div className="flex items-end justify-between gap-3">
+            <div>
+              <p className="text-xs font-bold uppercase tracking-wider text-indigo-600">
+                Recent updates
+              </p>
+              <h2 className="text-lg font-extrabold mt-1">
+                Platform activity
+              </h2>
+              <p className="text-xs text-gray-500 mt-1">
+                A record of recent events across Key and Go.
+              </p>
+            </div>
+
+            <span className="text-xs font-bold text-gray-500 whitespace-nowrap">
+              {feed.length} records
+            </span>
+          </div>
+
+          {feed.length === 0 ? (
+            <div className="bg-white rounded-2xl shadow p-6 text-center">
+              <h3 className="font-bold text-gray-800">
+                No activity recorded yet
+              </h3>
+              <p className="text-sm text-gray-500 mt-1">
+                New platform events will appear here automatically.
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {feed.map((event, index) => {
+                const isMoneyEvent =
+                  event.kind === "payment" ||
+                  event.kind === "payout" ||
+                  event.kind === "refund";
+
+                return (
+                  <article
+                    key={`${event.ts}-${index}`}
+                    className="slide-in bg-white rounded-2xl shadow p-4 space-y-3 transition-all duration-200 hover:shadow-md"
+                    style={{
+                      animationDelay: `${Math.min(index, 10) * 45}ms`,
+                    }}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <h3 className="font-bold text-sm text-gray-900">
+                          {event.title}
+                        </h3>
+
+                        <p className="text-xs text-gray-600 leading-relaxed mt-1">
+                          {event.detail}
+                        </p>
+                      </div>
+
+                      <span className="text-[10px] font-bold uppercase tracking-wide text-gray-400 whitespace-nowrap">
+                        {event.kind.replace(/_/g, " ")}
+                      </span>
+                    </div>
+
+                    <div className="flex items-end justify-between gap-3 border-t border-gray-100 pt-3">
+                      <div className="space-y-1">
+                        <p className="text-[11px] text-gray-500 font-medium">
+                          {ago(event.ts, state.at)}
+                        </p>
+
+                        {event.direction !== "info" && (
+                          <span
+                            className={`inline-flex rounded-full px-2.5 py-1 text-[10px] font-bold ${
+                              event.direction === "in"
+                                ? "bg-green-50 text-green-700"
+                                : "bg-red-50 text-red-700"
+                            }`}
+                          >
+                            {event.direction === "in"
+                              ? "Incoming"
+                              : "Outgoing"}
+                          </span>
+                        )}
+                      </div>
+
+                      {event.amount !== null &&
+                        Number(event.amount) > 0 && (
+                          <p
+                            className={`text-sm font-extrabold whitespace-nowrap ${
+                              isMoneyEvent
+                                ? event.direction === "in"
+                                  ? "text-green-700"
+                                  : "text-red-600"
+                                : "text-gray-800"
+                            }`}
+                          >
+                            {isMoneyEvent
+                              ? event.direction === "in"
+                                ? "+"
+                                : "−"
+                              : ""}
+                            {kes(Number(event.amount))}
+                          </p>
+                        )}
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
+          )}
+        </section>
+
+        {/* REFRESH INFORMATION */}
+        <div className="bg-white rounded-2xl shadow p-3 flex items-center justify-between gap-3">
+          <div>
+            <p className="text-xs font-bold text-gray-800">
+              Automatic updates enabled
+            </p>
+            <p className="text-[11px] text-gray-500 mt-1">
+              Notifications refresh every 30 seconds.
+            </p>
+          </div>
+
+          <span className="w-2.5 h-2.5 rounded-full bg-green-500 animate-pulse shrink-0" />
+        </div>
+
       </div>
+
       <BottomNav />
     </main>
   );

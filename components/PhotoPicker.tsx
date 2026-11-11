@@ -1,5 +1,6 @@
 "use client";
 import { useRef } from "react";
+import { Icon } from "@/components/AdminUI";
 
 export default function PhotoPicker({
   onFile,
@@ -22,7 +23,7 @@ export default function PhotoPicker({
   };
 
   return (
-    <div className="flex gap-2">
+    <div className="grid grid-cols-2 gap-2">
       <input ref={cam} type="file" accept="image/*" capture={facing} className="hidden" onChange={handle} />
       <input
         ref={gal}
@@ -35,17 +36,19 @@ export default function PhotoPicker({
         type="button"
         disabled={disabled}
         onClick={() => cam.current?.click()}
-        className="flex-1 bg-indigo-600 text-white font-semibold rounded-lg p-3 disabled:opacity-50"
+        className="btn-shine grad-bg flex items-center justify-center gap-2 text-white font-bold rounded-xl p-3 shadow disabled:opacity-50 active:scale-95"
       >
-        📷 Take photo
+        <Icon name="camera" className="w-5 h-5" />
+        Take photo
       </button>
       <button
         type="button"
         disabled={disabled}
         onClick={() => gal.current?.click()}
-        className="flex-1 bg-white border-2 border-indigo-300 font-semibold rounded-lg p-3 disabled:opacity-50"
+        className="flex items-center justify-center gap-2 bg-white border-2 border-indigo-200 font-bold rounded-xl p-3 disabled:opacity-50 active:scale-95"
       >
-        🖼️ {allowPdf ? "Gallery or file" : "Gallery"}
+        <Icon name="image" className="w-5 h-5" />
+        {allowPdf ? "Gallery or file" : "Gallery"}
       </button>
     </div>
   );

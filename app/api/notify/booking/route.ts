@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { sendSms } from "@/lib/sms";
+import { safeEqual } from "@/lib/safe";
 
 type Row = {
   id: string;
@@ -47,7 +48,7 @@ export async function POST(req: Request) {
     console.error("notify/booking: WEBHOOK_SECRET is not set in this deployment");
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
-  if (sent !== expected) {
+  if (!safeEqual(sent, expected)) {
     // Lengths only, so the secret itself never reaches the logs
     console.error(
       `notify/booking: secret mismatch (sent ${sent ? sent.length + " chars" : "nothing"}, expected ${expected.length} chars)`

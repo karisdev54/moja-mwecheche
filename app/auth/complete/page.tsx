@@ -21,11 +21,16 @@ function Finish() {
   const [error, setError] = useState("");
 
   useEffect(() => {
+        const err = params.get("error_description");
+    if (err) {
+      router.replace(`/login?error_description=${encodeURIComponent(err)}`);
+      return;
+    }
     let active = true;
     supabase.auth.getSession().then(async ({ data }) => {
       if (!active) return;
-      if (!data.session) {
-        router.replace("/login");
+            if (!data.session) {
+        router.replace(`/login?error_description=${encodeURIComponent("Google sign-in did not finish. Please try again.")}`);
         return;
       }
       const { data: p } = await supabase

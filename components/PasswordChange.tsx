@@ -1,6 +1,8 @@
 "use client";
 import { useState } from "react";
 import { supabase } from "@/lib/supabase";
+import { Icon } from "@/components/AdminUI";
+import { toast } from "@/lib/toast";
 
 const COMMON = [
   "password", "12345678", "123456789", "1234567890", "qwerty123", "qwertyuiop",
@@ -20,7 +22,7 @@ function rules(pw: string, email: string): Check[] {
   ];
 }
 
-// 0 to 4: used only for the colored bar
+// 0 to 4: used only for the coloured bar
 function strength(pw: string): number {
   let s = 0;
   if (pw.length >= 8) s++;
@@ -30,7 +32,7 @@ function strength(pw: string): number {
   return s;
 }
 
-const BAR = ["bg-gray-300", "bg-red-500", "bg-amber-500", "bg-lime-500", "bg-green-600"];
+const BAR = ["#d1d5db", "#ef4444", "#f59e0b", "#84cc16", "#16a34a"];
 const LABEL = ["", "Weak", "Fair", "Good", "Strong"];
 
 function Field({
@@ -47,14 +49,49 @@ function Field({
   auto: string;
 }) {
   return (
-    <input
-      className="w-full border-2 border-indigo-200 rounded-lg p-3"
-      type={show ? "text" : "password"}
-      autoComplete={auto}
-      placeholder={placeholder}
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-    />
+    <div className="relative">
+      <span className="absolute inset-y-0 left-0 w-12 flex items-center justify-center text-indigo-500 pointer-events-none">
+        <Icon name="lock" className="w-5 h-5" />
+      </span>
+      <input
+        className="w-full border-2 border-indigo-200 rounded-xl p-3 pl-12 bg-white focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100"
+        type={show ? "text" : "password"}
+        autoComplete={auto}
+        placeholder={placeholder}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+      />
+    </div>
+  );
+}
+
+function Switch({
+  on,
+  onChange,
+  label,
+  sub,
+}: {
+  on: boolean;
+  onChange: (v: boolean) => void;
+  label: string;
+  sub?: string;
+}) {
+  return (
+    <button type="button" role="switch" aria-checked={on} onClick={() => onChange(!on)} className="w-full flex items-center gap-3 text-left">
+      <span className="flex-1">
+        <span className="block text-sm font-semibold">{label}</span>
+        {sub && <span className="block text-xs text-gray-700">{sub}</span>}
+      </span>
+      <span
+        className="relative w-11 h-6 rounded-full transition-colors shrink-0"
+        style={{ background: on ? "#4338ca" : "#9ca3af" }}
+      >
+        <span
+          className="absolute top-0.5 left-0.5 w-5 h-5 rounded-full shadow transition-transform"
+          style={{ background: "#ffffff", transform: on ? "translateX(20px)" : "translateX(0)" }}
+        />
+      </span>
+    </button>
   );
 }
 
@@ -65,18 +102,19 @@ export default function PasswordChange({ email }: { email: string }) {
   const [show, setShow] = useState(false);
   const [others, setOthers] = useState(true);
   const [busy, setBusy] = useState(false);
-  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [msg, setMsg] = useState("");
 
   const checks = rules(next, email);
   const score = next ? strength(next) : 0;
 
   const submit = async () => {
-    setMsg(null);
+    if (busy) return;
+    setMsg("");
 
-    if (!current) return setMsg({ ok: false, text: "Enter your current password." });
-    if (checks.some((c) => !c.ok)) return setMsg({ ok: false, text: "The new password does not meet the rules below." });
-    if (next === current) return setMsg({ ok: false, text: "The new password must be different from the current one." });
-    if (next !== again) return setMsg({ ok: false, text: "The two new passwords do not match." });
+    if (!current) return setMsg("Enter your current password.");
+    if (checks.some((c) => !c.ok)) return setMsg("The new password does not meet the rules below.");
+    if (next === current) return setMsg("The new password must be different from the current one.");
+    if (next !== again) return setMsg("The two new passwords do not match.");
 
     setBusy(true);
 
@@ -85,19 +123,16 @@ export default function PasswordChange({ email }: { email: string }) {
     if (verify.error) {
       setBusy(false);
       const tooMany = /rate|too many/i.test(verify.error.message);
-      return setMsg({
-        ok: false,
-        text: tooMany
-          ? "Too many attempts. Please wait a few minutes and try again."
-          : "Your current password is wrong.",
-      });
+      return setMsg(
+        tooMany ? "Too many attempts. Please wait a few minutes and try again." : "Your current password is wrong."
+      );
     }
 
     // Step 2: change it
     const { error } = await supabase.auth.updateUser({ password: next });
     if (error) {
       setBusy(false);
-      return setMsg({ ok: false, text: error.message });
+      return setMsg(error.message);
     }
 
     // Step 3: sign out every other device, keep this one
@@ -107,60 +142,84 @@ export default function PasswordChange({ email }: { email: string }) {
     setCurrent("");
     setNext("");
     setAgain("");
-    setMsg({
-      ok: true,
-      text: others
-        ? "Password changed ✓ You were signed out on your other devices."
-        : "Password changed ✓",
-    });
+    toast(others ? "Password changed. Other devices were signed out." : "Password changed", { tone: "ok", ms: 4000 });
   };
 
   return (
-    <div className="bg-white rounded-2xl shadow p-4 space-y-3">
-      <h2 className="font-bold">Change password</h2>
+    <div className="space-y-4">
+      <section className="bg-white rounded-2xl shadow p-4 space-y-3">
+        <Field value={current} onChange={setCurrent} placeholder="Current password" show={show} auto="current-password" />
+        <Field value={next} onChange={setNext} placeholder="New password" show={show} auto="new-password" />
 
-      <Field value={current} onChange={setCurrent} placeholder="Current password" show={show} auto="current-password" />
-      <Field value={next} onChange={setNext} placeholder="New password" show={show} auto="new-password" />
-
-      {next && (
-        <div className="space-y-1">
-          <div className="flex gap-1">
-            {[1, 2, 3, 4].map((i) => (
-              <div key={i} className={`h-2 flex-1 rounded-full ${i <= score ? BAR[score] : "bg-gray-200"}`} />
-            ))}
+        {next && (
+          <div className="slide-in space-y-2">
+            <div className="flex gap-1.5">
+              {[1, 2, 3, 4].map((i) => (
+                <div key={i} className="h-2 flex-1 rounded-full bg-indigo-100 overflow-hidden">
+                  {i <= score && <div key={`${i}-${score}`} className="seg-in h-2 rounded-full" style={{ background: BAR[score] }} />}
+                </div>
+              ))}
+            </div>
+            <p className="text-xs font-bold" style={{ color: BAR[score] }}>
+              {LABEL[score] || " "}
+            </p>
+            <ul className="grid gap-1.5">
+              {checks.map((c) => (
+                <li key={c.label} className="flex items-center gap-2 text-sm" style={{ opacity: c.ok ? 1 : 0.75 }}>
+                  <span
+                    className="w-5 h-5 rounded-full flex items-center justify-center shrink-0 border-2"
+                    style={{
+                      background: c.ok ? "#16a34a" : "transparent",
+                      borderColor: c.ok ? "#16a34a" : "#9ca3af",
+                      color: "#ffffff",
+                    }}
+                  >
+                    {c.ok && (
+                      <span key="ok" className="pop-check">
+                        <Icon name="tick" className="w-3 h-3" />
+                      </span>
+                    )}
+                  </span>
+                  {c.label}
+                </li>
+              ))}
+            </ul>
           </div>
-          <p className="text-xs font-semibold">{LABEL[score]}</p>
-          <ul className="text-xs space-y-0.5">
-            {checks.map((c) => (
-              <li key={c.label} className={c.ok ? "text-green-700" : "text-gray-700"}>
-                {c.ok ? "✓" : "○"} {c.label}
-              </li>
-            ))}
-          </ul>
-        </div>
+        )}
+
+        <Field value={again} onChange={setAgain} placeholder="Repeat new password" show={show} auto="new-password" />
+        {again && next !== again && (
+          <p className="slide-in text-xs font-semibold text-red-600">The passwords do not match yet.</p>
+        )}
+      </section>
+
+      <section className="bg-white rounded-2xl shadow p-4 space-y-4">
+        <Switch on={show} onChange={setShow} label="Show passwords" />
+        <Switch on={others} onChange={setOthers} label="Sign out my other devices" sub="Recommended. Keeps your account safe if a phone was lost." />
+      </section>
+
+      {msg && (
+        <p
+          className="slide-in flex items-start gap-2 rounded-2xl bg-white shadow p-3 text-sm font-semibold text-red-700"
+          style={{ borderLeft: "4px solid #dc2626" }}
+        >
+          <Icon name="alert" className="w-4 h-4 mt-0.5" />
+          {msg}
+        </p>
       )}
-
-      <Field value={again} onChange={setAgain} placeholder="Repeat new password" show={show} auto="new-password" />
-      {again && next !== again && <p className="text-xs text-red-600">The passwords do not match yet.</p>}
-
-      <label className="flex items-center gap-2 text-sm">
-        <input type="checkbox" checked={show} onChange={(e) => setShow(e.target.checked)} />
-        Show passwords
-      </label>
-      <label className="flex items-center gap-2 text-sm">
-        <input type="checkbox" checked={others} onChange={(e) => setOthers(e.target.checked)} />
-        Sign me out on my other devices
-      </label>
-
-      {msg && <p className={`text-sm font-semibold ${msg.ok ? "text-green-700" : "text-red-600"}`}>{msg.text}</p>}
 
       <button
         onClick={submit}
         disabled={busy}
-        className="w-full bg-indigo-600 text-white font-bold rounded-lg p-3 disabled:opacity-50"
+        className="btn-shine grad-bg w-full text-white font-bold rounded-2xl p-4 shadow-xl active:scale-[0.98] disabled:opacity-60 flex items-center justify-center gap-2"
       >
+        {busy && <span className="w-4 h-4 rounded-full border-2 border-white/40 border-t-white animate-spin" />}
         {busy ? "Checking..." : "Update password"}
       </button>
+
+      <p className="text-xs text-gray-700 text-center">
+        Signed up with Google? Use Forgot password on the login page to create a password.
+      </p>
     </div>
   );
 }

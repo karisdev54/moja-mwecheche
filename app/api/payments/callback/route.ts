@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { markPaymentFailed, markPaymentSuccess } from "@/lib/payments";
+import { safeEqual } from "@/lib/safe";
 
 type CallbackBody = {
   Body?: {
@@ -18,7 +19,7 @@ export async function POST(req: Request) {
   const accepted = NextResponse.json({ ResultCode: 0, ResultDesc: "Accepted" });
 
   const secret = new URL(req.url).searchParams.get("secret");
-  if (!process.env.DARAJA_CALLBACK_SECRET || secret !== process.env.DARAJA_CALLBACK_SECRET) {
+  if (!process.env.DARAJA_CALLBACK_SECRET || !safeEqual(secret ?? "", process.env.DARAJA_CALLBACK_SECRET)){
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 

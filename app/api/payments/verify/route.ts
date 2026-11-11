@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { stkQuery } from "@/lib/daraja";
 import { markPaymentFailed, markPaymentSuccess } from "@/lib/payments";
+import { allow } from "@/lib/ratelimit";
 
 function friendly(desc: string): string {
   const d = desc.toLowerCase();
@@ -26,6 +27,9 @@ export async function POST(req: Request) {
     body = await req.json();
   } catch {
     return NextResponse.json({ error: "Bad request." }, { status: 400 });
+  }
+  if (!(await allow(`verify:${u.user.id}`, 60, 600))) {
+    return NextResponse.json({ error: "Too many attempts. Please try again later." }, { status: 429 });
   }
 
   const { data: payment } = await supabaseAdmin
@@ -60,4 +64,6 @@ export async function POST(req: Request) {
     console.error("Verify error", e);
     return NextResponse.json({ state: "pending" });
   }
+    
 }
+  

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { stkPush } from "@/lib/daraja";
 import { toMsisdn } from "@/lib/phone";
+import { allow } from "@/lib/ratelimit";
 
 export async function POST(req: Request) {
   const token = req.headers.get("authorization")?.replace("Bearer ", "");
@@ -9,7 +10,10 @@ export async function POST(req: Request) {
 
   const { data: u } = await supabaseAdmin.auth.getUser(token);
   if (!u.user) return NextResponse.json({ error: "Please log in again." }, { status: 401 });
-
+  
+  if (!(await allow(`stk:${u.user.id}`, 6, 3600))) {
+    return NextResponse.json({ error: "Too many payment attempts. Please wait a while and try again." }, { status: 429 });
+  }
   let body: { bookingId?: string; phone?: string };
   try {
     body = await req.json();

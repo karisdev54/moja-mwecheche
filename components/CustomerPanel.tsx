@@ -6,18 +6,20 @@ import MapPicker from "@/components/MapPicker";
 import PlateBadge from "@/components/PlateBadge";
 import { fmtMinutes, getRoute, type LngLat, type Place, type RouteView } from "@/lib/mapbox";
 import JobTracker from "@/components/JobTracker";
+import { alertDialog, confirmDialog, promptDialog } from "@/lib/dialog";
+import { Icon, PersonRow } from "@/components/AdminUI";
 
 const HOURLY_RATE = 1000; // KES per hour, keep in sync with hourly_rate in the bookings_guard SQL
 const TASKS = ["Airport transfer", "Wedding / event", "Business trip", "Errand / delivery", "Other"];
 const HOUR_CHIPS = [1, 2, 3, 4, 5, 6, 7, 8];
 
-const STATUS_STYLE: Record<string, string> = {
-  requested: "bg-amber-100 text-amber-900",
-  accepted: "bg-blue-100 text-blue-900",
-  in_progress: "bg-violet-100 text-violet-900",
-  completed: "bg-green-100 text-green-900",
-  cancelled: "bg-gray-200 text-gray-900",
-  expired: "bg-red-100 text-red-900",
+const STATUS: Record<string, { label: string; color: string }> = {
+  requested: { label: "Awaiting driver", color: "#d97706" },
+  accepted: { label: "Accepted", color: "#2563eb" },
+  in_progress: { label: "In progress", color: "#7c3aed" },
+  completed: { label: "Completed", color: "#059669" },
+  cancelled: { label: "Cancelled", color: "#6b7280" },
+  expired: { label: "Expired", color: "#dc2626" },
 };
 
 const ACTIVE = ["requested", "accepted", "in_progress"];
@@ -42,6 +44,7 @@ type Booking = {
     car_details: string | null;
     has_car: boolean | null;
     car_plate: string | null;
+    car_status: string | null;
   } | null;
   widened_at: string | null;
   route_km: number | null;
@@ -71,12 +74,85 @@ async function fetchMyBookings(userId: string): Promise<Booking[]> {
   const { data } = await supabase
     .from("bookings")
     .select(
-      "id,task_type,scheduled_at,duration_hours,destination,price,status,paid,driver_id,refund_status,widened_at,route_km,route_min,vehicle,driver_note,timing,driver:driver_id(full_name,phone,car_details,has_car,car_plate)"
+      "id,task_type,scheduled_at,duration_hours,destination,price,status,paid,driver_id,refund_status,widened_at,route_km,route_min,vehicle,driver_note,timing,driver:driver_id(full_name,phone,car_details,has_car,car_plate,car_status)"
     )
     .eq("customer_id", userId)
     .order("created_at", { ascending: false })
     .limit(8);
   return (data ?? []) as unknown as Booking[];
+}
+const FIELD =
+  "w-full border-2 border-indigo-200 rounded-xl p-3 bg-white focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100";
+
+function Pill({ text, color }: { text: string; color: string }) {
+  return (
+    <span
+      className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-bold whitespace-nowrap"
+      style={{ background: `color-mix(in srgb, ${color} 14%, var(--surface))`, color }}
+    >
+      <span className="w-1.5 h-1.5 rounded-full" style={{ background: color }} />
+      {text}
+    </span>
+  );
+}
+
+function Block({ icon, title, children }: { icon: string; title: string; children: React.ReactNode }) {
+  return (
+    <div className="space-y-2">
+      <p className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-gray-700">
+        <span className="text-indigo-600">
+          <Icon name={icon} className="w-4 h-4" />
+        </span>
+        {title}
+      </p>
+      {children}
+    </div>
+  );
+}
+
+function Choice({
+  on,
+  disabled,
+  onClick,
+  icon,
+  label,
+  sub,
+}: {
+  on: boolean;
+  disabled?: boolean;
+  onClick: () => void;
+  icon: string;
+  label: string;
+  sub?: string;
+}) {
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      onClick={onClick}
+      className={`rounded-2xl border-2 p-3 text-center flex flex-col items-center gap-1 transition-all active:scale-95 disabled:opacity-40 ${
+        on ? "border-indigo-600 bg-indigo-600 text-white shadow-lg" : "border-indigo-200 bg-white text-gray-900"
+      }`}
+    >
+      <Icon name={icon} className="w-6 h-6" />
+      <span className="text-sm font-bold">{label}</span>
+      {sub && <span className="text-[11px] opacity-80">{sub}</span>}
+    </button>
+  );
+}
+
+function Chip({ on, onClick, children }: { on: boolean; onClick: () => void; children: React.ReactNode }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`px-3.5 py-2 rounded-full text-sm font-semibold border-2 transition-colors active:scale-95 ${
+        on ? "bg-indigo-600 text-white border-indigo-600" : "bg-white text-gray-900 border-indigo-200"
+      }`}
+    >
+      {children}
+    </button>
+  );
 }
 
 export default function CustomerPanel({
@@ -315,8 +391,19 @@ export default function CustomerPanel({
     );
   };
 
-  const cancel = async (id: string, paid: boolean) => {
-    if (paid && !window.confirm("Cancel this booking and request a refund?")) return;
+    const cancel = async (id: string, paid: boolean) => {
+    const ok = await confirmDialog(
+      paid
+        ? {
+            title: "Cancel and request a refund?",
+            message: "Your driver will be told, and we will send your money back to M-Pesa.",
+            confirmText: "Cancel booking",
+            cancelText: "Keep booking",
+            danger: true,
+          }
+        : { title: "Cancel this request?", confirmText: "Cancel request", cancelText: "Keep it", danger: true }
+    );
+    if (!ok) return;
     await supabase.from("bookings").update({ status: "cancelled" }).eq("id", id);
     reload();
   };
@@ -401,79 +488,71 @@ export default function CustomerPanel({
     (b) => ACTIVE.includes(b.status) || (b.status === "expired" && b.id === newestId)
   );
 
-  return (
-    <div className="space-y-3 text-gray-900">
+    return (
+    <div className="space-y-4 text-gray-900">
       {notice && (
-        <p className="bg-green-100 text-green-900 font-semibold rounded-xl p-3 text-center">{notice}</p>
+        <p className="slide-in flex items-center gap-2 rounded-2xl bg-green-50 text-green-800 text-sm font-semibold p-3">
+          <Icon name="check" className="w-4 h-4" />
+          {notice}
+        </p>
       )}
 
       {!open ? (
-        <button onClick={openForm} className="w-full bg-indigo-600 text-white font-bold rounded-xl p-4 text-lg shadow">
-          🚗 Book a driver
+        <button
+          onClick={openForm}
+          className="btn-shine grad-bg w-full text-white rounded-2xl p-4 shadow-xl active:scale-[0.98] flex items-center gap-3 text-left"
+        >
+          <span className="w-11 h-11 rounded-xl bg-white/20 flex items-center justify-center shrink-0">
+            <Icon name="car" className="w-6 h-6" />
+          </span>
+          <span className="flex-1">
+            <span className="block font-bold text-base">Book a driver</span>
+            <span className="block text-xs text-white/80">Now or later, with a verified driver</span>
+          </span>
+          <Icon name="chevron" className="w-5 h-5" />
         </button>
       ) : (
-        <fieldset disabled={sending} className="min-w-0 space-y-3 rounded-xl border-2 border-indigo-200 bg-indigo-50 p-3">
-          <div className="grid grid-cols-2 gap-2">
-            {[
-              { v: "now" as const, icon: "⚡", label: "Now", sub: "As soon as possible" },
-              { v: "later" as const, icon: "📅", label: "Later", sub: "Pick a date and time" },
-            ].map((o) => (
-              <button
-                key={o.v}
-                type="button"
-                onClick={() => setTiming(o.v)}
-                className={`rounded-xl border-2 p-3 text-center ${
-                  timing === o.v
-                    ? "bg-indigo-600 text-white border-indigo-600"
-                    : "bg-white text-gray-900 border-indigo-200"
-                }`}
-              >
-                <span className="block text-2xl">{o.icon}</span>
-                <span className="block font-bold">{o.label}</span>
-                <span className="block text-xs">{o.sub}</span>
-              </button>
-            ))}
-          </div>
-
-          <div>
-            <p className="text-sm font-semibold mb-1">What do you need?</p>
-            <select className="w-full border-2 border-indigo-200 rounded-lg p-3" value={task} onChange={(e) => setTask(e.target.value)}>
-              {TASKS.map((t) => (
-                <option key={t}>{t}</option>
-              ))}
-            </select>
-          </div>
-
-          {timing === "later" && (
-            <div>
-              <p className="text-sm font-semibold mb-1">When? (at least 1 hour from now)</p>
-              <input
-                type="datetime-local"
-                min={minWhen}
-                className="w-full border-2 border-indigo-200 rounded-lg p-3"
-                value={when}
-                onChange={(e) => setWhen(e.target.value)}
-              />
-              <p className="text-xs mt-1">Drivers can accept it ahead of time. Your driver starts at the booked time.</p>
+        <fieldset
+          disabled={sending}
+          className="min-w-0 space-y-5 rounded-2xl border border-indigo-100 bg-white p-4 shadow"
+        >
+          <Block icon="clock" title="When">
+            <div className="grid grid-cols-2 gap-2">
+              <Choice on={timing === "now"} onClick={() => setTiming("now")} icon="bolt" label="Now" sub="As soon as possible" />
+              <Choice on={timing === "later"} onClick={() => setTiming("later")} icon="calendar" label="Later" sub="Pick a date and time" />
             </div>
-          )}
+            {timing === "later" && (
+              <div className="slide-in space-y-1">
+                <input
+                  type="datetime-local"
+                  min={minWhen}
+                  className={FIELD}
+                  value={when}
+                  onChange={(e) => setWhen(e.target.value)}
+                />
+                <p className="text-xs text-gray-700">
+                  At least 1 hour from now. Drivers can accept ahead of time, and yours starts at the booked time.
+                </p>
+              </div>
+            )}
+          </Block>
 
-          <div>
-            <p className="text-sm font-semibold mb-1">How many hours?</p>
-            <div className="flex flex-wrap gap-2 mb-2">
+          <Block icon="list" title="What do you need">
+            <div className="flex flex-wrap gap-2">
+              {TASKS.map((t) => (
+                <Chip key={t} on={task === t} onClick={() => setTask(t)}>
+                  {t}
+                </Chip>
+              ))}
+            </div>
+          </Block>
+
+          <Block icon="clock" title="How long">
+            <div className="flex flex-wrap gap-2">
               {HOUR_CHIPS.map((h) => (
-                <button
-                  key={h}
-                  type="button"
-                  onClick={() => setHoursText(String(h))}
-                  className={`px-4 py-2 rounded-full text-sm font-semibold border-2 ${
-                    hoursText === String(h)
-                      ? "bg-indigo-600 text-white border-indigo-600"
-                      : "bg-white text-gray-900 border-indigo-200"
-                  }`}
-                >
+                <Chip key={h} on={hoursText === String(h)} onClick={() => setHoursText(String(h))}>
                   {h} h
-                </button>
+                </Chip>
               ))}
             </div>
             <input
@@ -481,51 +560,36 @@ export default function CustomerPanel({
               inputMode="decimal"
               min={0.5}
               step={0.5}
-              className="w-full border-2 border-indigo-200 rounded-lg p-3"
+              className={FIELD}
               placeholder="Or type your own, e.g. 2.5"
               value={hoursText}
               onChange={(e) => setHoursText(e.target.value)}
             />
             {hoursText !== "" && !hoursValid && (
-              <p className="text-xs text-red-600 mt-1">Enter between 0.5 and 72 hours.</p>
+              <p className="text-xs text-red-600 font-semibold">Enter between 0.5 and 72 hours.</p>
             )}
-          </div>
+          </Block>
 
-          <div>
-            <p className="text-sm font-semibold mb-1">Which car?</p>
+          <Block icon="car" title="Which car">
             <div className="grid grid-cols-2 gap-2">
-              {[
-                { v: "driver_car" as const, icon: "🚕", label: "Driver brings a car" },
-                { v: "customer_car" as const, icon: "🔑", label: "Drive my car" },
-              ].map((o) => {
-                const blocked = o.v === "customer_car" && hasCar !== true;
-                return (
-                  <button
-                    key={o.v}
-                    type="button"
-                    disabled={blocked}
-                    onClick={() => setVehicle(o.v)}
-                    className={`rounded-xl border-2 p-3 text-sm font-semibold text-center disabled:opacity-40 ${
-                      vehicle === o.v
-                        ? "bg-indigo-600 text-white border-indigo-600"
-                        : "bg-white text-gray-900 border-indigo-200"
-                    }`}
-                  >
-                    <span className="block text-2xl">{o.icon}</span>
-                    {o.label}
-                  </button>
-                );
-              })}
+              <Choice on={vehicle === "driver_car"} onClick={() => setVehicle("driver_car")} icon="car" label="Driver's car" sub="The driver brings one" />
+              <Choice
+                on={vehicle === "customer_car"}
+                disabled={hasCar !== true}
+                onClick={() => setVehicle("customer_car")}
+                icon="key"
+                label="My car"
+                sub="The driver drives it"
+              />
             </div>
             {hasCar !== true && (
-              <p className="text-xs mt-1">
-                You have no car on your account, so “Drive my car” is off. You can add one in Profile, My car.
+              <p className="text-xs text-gray-700">
+                You have no car on your account, so My car is off. You can add one in Profile, My vehicle.
               </p>
             )}
-          </div>
+          </Block>
 
-          <div>
-            <p className="text-sm font-semibold mb-1">Where to? (required)</p>
+          <Block icon="pin" title="Where to (required)">
             <PlaceSearch
               value={destination}
               picked={destCoords !== null}
@@ -536,204 +600,244 @@ export default function CustomerPanel({
             <button
               type="button"
               onClick={() => setPicking(true)}
-              className="mt-2 w-full bg-white border-2 border-indigo-300 font-semibold rounded-lg p-3"
+              className="w-full flex items-center justify-center gap-2 bg-white border-2 border-indigo-300 font-bold rounded-xl p-3 active:scale-[0.98]"
             >
-              📍 Choose on the map
+              <Icon name="pin" className="w-4 h-4" />
+              Choose on the map
             </button>
-            {routeBusy && <p className="text-sm text-indigo-800 mt-1">Finding the best route...</p>}
-            {routeMsg && <p className="text-sm text-red-600 mt-1">{routeMsg}</p>}
+            {routeBusy && <p className="text-sm text-indigo-800 font-semibold">Finding the best route...</p>}
+            {routeMsg && <p className="text-sm text-red-600 font-semibold">{routeMsg}</p>}
             {routeInfo && (
-              <div className="mt-2 flex gap-2">
-                <div className="flex-1 bg-white rounded-lg border-2 border-indigo-200 p-2 text-center">
-                  <p className="text-xs text-gray-700">Distance</p>
-                  <p className="font-bold">{routeInfo.km} km</p>
+              <div className="slide-in grid grid-cols-2 gap-2">
+                <div className="rounded-xl bg-indigo-50 p-3 text-center">
+                  <p className="text-[11px] font-bold uppercase tracking-wider text-gray-700">Distance</p>
+                  <p className="text-lg font-extrabold">{routeInfo.km} km</p>
                 </div>
-                <div className="flex-1 bg-white rounded-lg border-2 border-indigo-200 p-2 text-center">
-                  <p className="text-xs text-gray-700">Drive time</p>
-                  <p className="font-bold">{fmtMinutes(routeInfo.minutes)}</p>
+                <div className="rounded-xl bg-indigo-50 p-3 text-center">
+                  <p className="text-[11px] font-bold uppercase tracking-wider text-gray-700">Drive time</p>
+                  <p className="text-lg font-extrabold">{fmtMinutes(routeInfo.minutes)}</p>
                 </div>
               </div>
             )}
-          </div>
+          </Block>
 
-          <div>
-            <p className="text-sm font-semibold mb-1">Note for the driver (optional)</p>
+          <Block icon="edit" title="Note for the driver (optional)">
             <textarea
-              className="w-full border-2 border-indigo-200 rounded-lg p-3"
+              className={FIELD}
               rows={2}
               maxLength={200}
-              placeholder="Gate colour, landmark, floor, car plate..."
+              placeholder="Gate colour, landmark, floor, car plate"
               value={note}
               onChange={(e) => setNote(e.target.value)}
             />
-          </div>
+          </Block>
 
           {timing === "now" && nearby !== null && (
-            <p className={`text-sm font-semibold ${nearby > 0 ? "text-green-700" : "text-red-600"}`}>
+            <p
+              className={`flex items-center gap-2 rounded-xl p-3 text-sm font-semibold ${
+                nearby > 0 ? "bg-green-50 text-green-800" : "bg-amber-50 text-amber-900"
+              }`}
+            >
+              <Icon name={nearby > 0 ? "check" : "alert"} className="w-4 h-4" />
               {nearby > 0
                 ? `${nearby} driver${nearby > 1 ? "s" : ""} available within 10 km`
                 : "No drivers online near you right now. You can still request, and one may accept soon."}
             </p>
           )}
 
-          <div className="bg-white rounded-lg border-2 border-indigo-200 p-3 flex justify-between items-center">
-            <span className="text-sm font-semibold">Estimated price</span>
-            <span className="text-xl font-bold text-indigo-800">KES {estimate.toLocaleString()}</span>
+          <div
+            className="relative overflow-hidden rounded-2xl p-4 text-white sheen"
+            style={{ background: "linear-gradient(135deg,#312e81 0%,#4338ca 50%,#0e7490 100%)" }}
+          >
+            <p className="text-xs font-semibold uppercase tracking-wider text-white/80">Estimated price</p>
+            <p className="text-3xl font-extrabold tracking-tight">KES {estimate.toLocaleString()}</p>
+            <p className="text-xs text-white/80">
+              {hoursValid
+                ? `${hoursNum} hour${hoursNum === 1 ? "" : "s"} at KES ${HOURLY_RATE.toLocaleString()} per hour`
+                : "Enter how many hours you need"}
+            </p>
           </div>
 
-          {msg && <p className="text-red-600 text-sm font-semibold">{msg}</p>}
+          {msg && (
+            <p className="slide-in flex items-start gap-2 rounded-xl bg-red-50 text-red-700 text-sm font-semibold p-3">
+              <Icon name="alert" className="w-4 h-4 mt-0.5" />
+              {msg}
+            </p>
+          )}
 
-          <div className="flex gap-2">
+          <div className="space-y-2">
             <button
               type="button"
               onClick={submit}
               disabled={sending}
-              className="flex-1 bg-indigo-600 text-white font-bold rounded-lg p-3 disabled:opacity-70"
+              className="btn-shine grad-bg w-full text-white font-bold rounded-2xl p-4 shadow-xl active:scale-[0.98] disabled:opacity-70 flex items-center justify-center gap-2"
             >
-              {sending ? (
-                <span className="inline-flex items-center justify-center gap-2">
-                  <span className="w-4 h-4 rounded-full border-2 border-white/40 border-t-white animate-spin" />
-                  Sending request...
-                </span>
-              ) : (
-                "Request driver"
-              )}
+              {sending && <span className="w-4 h-4 rounded-full border-2 border-white/40 border-t-white animate-spin" />}
+              {sending ? "Sending request..." : "Request driver"}
             </button>
-            <button
-              type="button"
-              onClick={closeForm}
-              className="flex-1 bg-white border-2 border-indigo-200 rounded-lg p-3 font-semibold"
-            >
-              Close
+            <button type="button" onClick={closeForm} className="w-full text-sm font-bold text-gray-700 p-2">
+              Cancel
             </button>
           </div>
         </fieldset>
       )}
 
-      {onHome.map((b) => (
-        <div key={b.id} className="border-2 border-indigo-200 bg-indigo-50 rounded-xl p-3 text-sm text-gray-900">
-          <div className="flex justify-between items-center">
-            <span className="font-bold">{b.task_type}</span>
-            <span
-              className={`px-2 py-1 rounded-full text-xs font-semibold capitalize ${
-                STATUS_STYLE[b.status] ?? "bg-gray-200 text-gray-900"
-              }`}
-            >
-              {b.status.replace("_", " ")}
-            </span>
-          </div>
-          <p className="text-gray-700 mt-1">
-            <span className="font-semibold">{b.timing === "now" ? "⚡ Now" : "📅 Later"}</span> ·{" "}
-            {new Date(b.scheduled_at).toLocaleString()} · {b.duration_hours}h · KES {b.price}
-          </p>
-          <p className="text-xs text-gray-700">
-            {b.vehicle === "customer_car" ? "🔑 Driver uses your car" : "🚕 Driver brings a car"}
-          </p>
-          {b.destination && (
-            <p className="text-gray-800 mt-1">
-              📍 {b.destination}
-              {b.route_km ? ` · ${b.route_km} km` : ""}
-              {b.route_min ? ` · about ${fmtMinutes(b.route_min)}` : ""}
-            </p>
-          )}
-          {b.driver_note && <p className="text-xs italic mt-1">“{b.driver_note}”</p>}
-
-          {b.status === "requested" && (
-            <p className="mt-1 font-semibold text-indigo-800">
-              {b.timing === "later"
-                ? "Waiting for a driver to accept your booking..."
-                : b.widened_at
-                  ? "Still searching, now within 25 km..."
-                  : "Looking for a driver within 10 km..."}
-            </p>
-          )}
-          {b.status === "expired" && (
-            <div className="mt-1 space-y-2">
-              <p className="font-semibold text-red-600">No driver accepted in time.</p>
-              <div className="flex gap-2">
-                <button onClick={() => rebook(b)} className="flex-1 bg-indigo-600 text-white rounded-lg p-3 font-semibold">
-                  Request again
-                </button>
-                <button
-                  onClick={() => remove(b.id)}
-                  className="flex-1 bg-white border-2 border-red-300 text-red-700 rounded-lg p-3 font-semibold"
-                >
-                  Remove
-                </button>
+      {onHome.map((b) => {
+        const st = STATUS[b.status] ?? { label: b.status, color: "#6b7280" };
+        const live = b.status === "accepted" || b.status === "in_progress";
+        return (
+          <article key={b.id} className="slide-in bg-white rounded-2xl shadow overflow-hidden flex">
+            <div className="w-1.5 shrink-0" style={{ background: st.color }} />
+            <div className="flex-1 min-w-0 p-4 space-y-3">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <h3 className="font-bold leading-tight">{b.task_type}</h3>
+                  <p className="text-xs text-gray-700 mt-1 flex items-center gap-1.5 flex-wrap">
+                    <Icon name={b.timing === "now" ? "bolt" : "calendar"} className="w-3.5 h-3.5" />
+                    {b.timing === "now" ? "Immediate" : "Scheduled"}
+                    <span aria-hidden="true">·</span>
+                    {new Date(b.scheduled_at).toLocaleString([], { dateStyle: "medium", timeStyle: "short" })}
+                  </p>
+                </div>
+                <Pill text={st.label} color={st.color} />
               </div>
-            </div>
-          )}
 
-          {b.driver && b.status !== "cancelled" && (
-            <div className="mt-1">
-              <p>
-                Driver: <span className="font-semibold">{b.driver.full_name || "Assigned driver"}</span>
-                {b.driver.phone && (b.status === "accepted" || b.status === "in_progress") && (
-                  <a href={`tel:${b.driver.phone}`} className="ml-2 text-blue-700 underline font-semibold">
-                    Call
-                  </a>
-                )}
-              </p>
-              {b.vehicle === "driver_car" &&
-                b.driver.car_plate &&
-                (b.status === "accepted" || b.status === "in_progress") && (
-                  <div className="mt-2 flex items-center gap-2">
-                    <PlateBadge plate={b.driver.car_plate} />
-                    {b.driver.car_details && <span className="text-xs">{b.driver.car_details}</span>}
+              <JobTracker status={b.status} paid={b.paid} />
+
+              <div className="flex items-end justify-between gap-3">
+                <div>
+                  <p className="text-[11px] font-bold uppercase tracking-wider text-gray-700">Amount</p>
+                  <p className="text-2xl font-extrabold tracking-tight">KES {Number(b.price).toLocaleString()}</p>
+                </div>
+                <div className="text-right space-y-1">
+                  {b.paid && <Pill text="Paid" color="#059669" />}
+                  <p className="text-xs text-gray-700">{b.duration_hours} h</p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 text-xs text-gray-800">
+                <Icon name={b.vehicle === "customer_car" ? "key" : "car"} className="w-4 h-4 text-indigo-700" />
+                {b.vehicle === "customer_car" ? "The driver uses your car" : "The driver brings a car"}
+              </div>
+
+              {b.destination && (
+                <div className="flex items-start gap-2.5 rounded-xl bg-indigo-50 p-3">
+                  <span className="text-indigo-700 mt-0.5">
+                    <Icon name="pin" className="w-4 h-4" />
+                  </span>
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold break-words">{b.destination}</p>
+                    {(b.route_km || b.route_min) && (
+                      <p className="text-xs text-gray-700">
+                        {b.route_km ? `${b.route_km} km` : ""}
+                        {b.route_km && b.route_min ? " · " : ""}
+                        {b.route_min ? `about ${fmtMinutes(b.route_min)}` : ""}
+                      </p>
+                    )}
                   </div>
-                )}
-            </div>
-          )}
+                </div>
+              )}
+              {b.driver_note && <p className="text-xs italic text-gray-800">“{b.driver_note}”</p>}
 
-          {b.paid && <p className="mt-1 text-green-700 font-semibold">Paid ✓</p>}
+              {b.status === "requested" && (
+                <p className="flex items-center gap-2 text-sm font-semibold text-indigo-800">
+                  <span className="w-3.5 h-3.5 rounded-full border-2 border-indigo-200 border-t-indigo-700 animate-spin" />
+                  {b.timing === "later"
+                    ? "Waiting for a driver to accept your booking"
+                    : b.widened_at
+                      ? "Still searching, now within 25 km"
+                      : "Looking for a driver within 10 km"}
+                </p>
+              )}
 
-          {b.status === "accepted" && !b.paid && (
-            <div className="mt-2 space-y-2">
-              <input
-                type="tel"
-                className="w-full border-2 border-indigo-200 rounded-lg p-3"
-                placeholder="M-Pesa number, e.g. 0712345678"
-                value={payPhone}
-                onChange={(e) => setPayPhone(e.target.value)}
-              />
-              <button
-                onClick={() => pay(b.id)}
-                disabled={payingId === b.id}
-                className="w-full bg-green-600 text-white font-bold rounded-lg p-3 disabled:opacity-60"
-              >
-                {payingId === b.id ? "Waiting for payment..." : `Pay KES ${b.price} with M-Pesa`}
-              </button>
-              {process.env.NEXT_PUBLIC_TEST_PAYMENTS === "true" && (
+              {b.status === "expired" && (
+                <div className="space-y-2">
+                  <p className="text-sm font-semibold text-red-600">No driver accepted in time.</p>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button onClick={() => rebook(b)} className="btn-shine grad-bg text-white rounded-xl p-3 text-sm font-bold">
+                      Request again
+                    </button>
+                    <button
+                      onClick={() => remove(b.id)}
+                      className="bg-white border-2 border-red-300 text-red-700 rounded-xl p-3 text-sm font-bold"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {b.driver && b.status !== "cancelled" && (
+                <PersonRow role="Your driver" name={b.driver.full_name} phone={live ? b.driver.phone : null}>
+                  {b.vehicle === "driver_car" && b.driver.car_plate && live && (
+                    <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                      <PlateBadge plate={b.driver.car_plate} small verified={b.driver.car_status === "approved"} />
+                      {b.driver.car_details && <span className="text-xs text-gray-700">{b.driver.car_details}</span>}
+                    </div>
+                  )}
+                </PersonRow>
+              )}
+
+              {b.status === "accepted" && !b.paid && (
+                <div className="space-y-2 rounded-xl bg-indigo-50 p-3">
+                  <p className="text-sm font-bold">Pay to confirm your driver</p>
+                  <input
+                    type="tel"
+                    inputMode="tel"
+                    className={FIELD}
+                    placeholder="M-Pesa number, e.g. 0712345678"
+                    value={payPhone}
+                    onChange={(e) => setPayPhone(e.target.value)}
+                  />
+                  <button
+                    onClick={() => pay(b.id)}
+                    disabled={payingId === b.id}
+                    className="w-full bg-green-600 text-white font-bold rounded-xl p-3.5 disabled:opacity-60 flex items-center justify-center gap-2 active:scale-[0.98]"
+                  >
+                    {payingId === b.id && (
+                      <span className="w-4 h-4 rounded-full border-2 border-white/40 border-t-white animate-spin" />
+                    )}
+                    {payingId === b.id ? "Waiting for payment..." : `Pay KES ${Number(b.price).toLocaleString()} with M-Pesa`}
+                  </button>
+                  {process.env.NEXT_PUBLIC_TEST_PAYMENTS === "true" && (
+                    <button onClick={() => testPay(b.id)} className="w-full bg-amber-500 text-black font-bold rounded-xl p-3">
+                      Skip payment (test mode)
+                    </button>
+                  )}
+                  {payMsg && <p className="text-sm font-semibold">{payMsg}</p>}
+                </div>
+              )}
+
+              {b.status === "accepted" && b.paid && b.timing === "later" && (
+                <p className="flex items-center gap-2 text-sm font-semibold text-indigo-800">
+                  <Icon name="clock" className="w-4 h-4" />
+                  Your driver will start at the booked time
+                </p>
+              )}
+
+              {b.paid && b.status === "in_progress" && (
+                <p className="text-xs text-gray-700">The job has started. Contact support if there is a problem.</p>
+              )}
+
+              {b.refund_status === "needed" && (
+                <p className="flex items-center gap-2 rounded-xl bg-amber-50 text-amber-900 text-sm font-semibold p-3">
+                  <Icon name="refund" className="w-4 h-4" />
+                  Refund requested. We will send your money back to M-Pesa.
+                </p>
+              )}
+
+              {(b.status === "requested" || b.status === "accepted") && (
                 <button
-                  onClick={() => testPay(b.id)}
-                  className="w-full bg-amber-500 text-black font-bold rounded-lg p-3"
+                  onClick={() => cancel(b.id, b.paid)}
+                  className="w-full bg-white border-2 border-red-200 text-red-700 font-bold rounded-xl p-3 text-sm active:scale-[0.98]"
                 >
-                  Skip payment (test mode)
+                  {b.paid ? "Cancel and request refund" : "Cancel booking"}
                 </button>
               )}
-              {payMsg && <p className="text-sm font-semibold text-gray-900">{payMsg}</p>}
             </div>
-          )}
-
-          {b.status === "accepted" && b.paid && b.timing === "later" && (
-            <p className="mt-1 text-xs font-semibold text-indigo-800">Your driver will start at the booked time.</p>
-          )}
-
-          {(b.status === "requested" || b.status === "accepted") && (
-            <button onClick={() => cancel(b.id, b.paid)} className="text-red-600 underline mt-2 font-semibold">
-              {b.paid ? "Cancel and request refund" : "Cancel"}
-            </button>
-          )}
-          {b.paid && b.status === "in_progress" && (
-            <p className="text-xs text-gray-700 mt-1">The job has started. Contact support if there is a problem.</p>
-          )}
-          {b.refund_status === "needed" && (
-            <p className="mt-1 text-sm font-semibold text-indigo-800">
-              Refund requested. We will send your money back to M-Pesa and text you.
-            </p>
-          )}
-        </div>
-      ))}
+          </article>
+        );
+      })}
 
       {picking && (
         <MapPicker

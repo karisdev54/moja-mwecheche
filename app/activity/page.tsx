@@ -1,13 +1,13 @@
 "use client";
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
-import BottomNav from "@/components/BottomNav";
 import DriverRating from "@/components/DriverRating";
 import RateDriver from "@/components/RateDriver";
 import Loader from "@/components/Loader";
-import CountUp from "@/components/motion/CountUp";
+import { Icon, Num, Tile } from "@/components/AdminUI";
+import { confirmDialog } from "@/lib/dialog";
 
 type Item = {
   id: string;
@@ -27,13 +27,13 @@ type Item = {
 };
 type Data = { userId: string; role: string; items: Item[] };
 
-const STATUS_STYLE: Record<string, string> = {
-  requested: "bg-amber-100 text-amber-900",
-  accepted: "bg-blue-100 text-blue-900",
-  in_progress: "bg-violet-100 text-violet-900",
-  completed: "bg-green-100 text-green-900",
-  cancelled: "bg-gray-200 text-gray-900",
-  expired: "bg-red-100 text-red-900",
+const STATUS: Record<string, { label: string; color: string }> = {
+  requested: { label: "Awaiting driver", color: "#d97706" },
+  accepted: { label: "Accepted", color: "#2563eb" },
+  in_progress: { label: "In progress", color: "#7c3aed" },
+  completed: { label: "Completed", color: "#059669" },
+  cancelled: { label: "Cancelled", color: "#6b7280" },
+  expired: { label: "Expired", color: "#dc2626" },
 };
 
 const FILTERS: { label: string; match: string[] | null }[] = [
@@ -42,6 +42,23 @@ const FILTERS: { label: string; match: string[] | null }[] = [
   { label: "Done", match: ["completed"] },
   { label: "Cancelled", match: ["cancelled", "expired"] },
 ];
+
+const money = (n: number) => `KES ${Math.round(Number(n)).toLocaleString()}`;
+const dayLabel = (iso: string) =>
+  new Date(iso).toLocaleDateString([], { weekday: "long", day: "numeric", month: "short" });
+const timeLabel = (iso: string) => new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+
+function Pill({ text, color }: { text: string; color: string }) {
+  return (
+    <span
+      className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-bold whitespace-nowrap"
+      style={{ background: `color-mix(in srgb, ${color} 14%, var(--surface))`, color }}
+    >
+      <span className="w-1.5 h-1.5 rounded-full" style={{ background: color }} />
+      {text}
+    </span>
+  );
+}
 
 async function fetchActivity(): Promise<Data | "login"> {
   const { data: u } = await supabase.auth.getUser();
@@ -52,7 +69,9 @@ async function fetchActivity(): Promise<Data | "login"> {
   const column = role === "driver" ? "driver_id" : "customer_id";
   const { data } = await supabase
     .from("bookings")
-    .select("id,task_type,scheduled_at,duration_hours,destination,price,status,paid,driver_id,driver_earnings,refund_status,rating_skipped")
+    .select(
+      "id,task_type,scheduled_at,duration_hours,destination,price,status,paid,driver_id,driver_earnings,refund_status,rating_skipped"
+    )
     .eq(column, u.user.id)
     .order("scheduled_at", { ascending: false })
     .limit(50);
@@ -107,8 +126,15 @@ export default function ActivityPage() {
     setReopen((r) => r.filter((x) => x !== id));
     refresh();
   };
-    const remove = async (id: string) => {
-    if (!window.confirm("Remove this request completely?")) return;
+
+  const remove = async (id: string) => {
+    const ok = await confirmDialog({
+      title: "Remove this request?",
+      message: "It will be deleted completely.",
+      confirmText: "Remove",
+      danger: true,
+    });
+    if (!ok) return;
     await supabase.from("bookings").delete().eq("id", id);
     refresh();
   };
@@ -119,107 +145,208 @@ export default function ActivityPage() {
   const done = data.items.filter((i) => i.status === "completed" && i.paid);
   const total = done.reduce((s, i) => s + Number(isDriver ? i.driver_earnings ?? 0 : i.price), 0);
 
+  const counts = FILTERS.map((f) =>
+    f.match ? data.items.filter((i) => f.match!.includes(i.status)).length : data.items.length
+  );
   const match = FILTERS[filter].match;
   const shown = match ? data.items.filter((i) => match.includes(i.status)) : data.items;
 
   return (
-    <main className="min-h-screen bg-gray-50 p-4 pb-28 stagger">
-      <div className="max-w-md mx-auto space-y-4 text-gray-900 stagger">
-        <h1 className="text-2xl font-bold">Activity</h1>
+    <main className="min-h-screen bg-gray-50 p-4 pb-28">
+      <div className="max-w-md mx-auto space-y-5 text-gray-900">
+        <header>
+          <h1 className="text-2xl font-extrabold tracking-tight">Activity</h1>
+          <p className="text-sm text-gray-700">{isDriver ? "Your jobs and earnings" : "Your trips and payments"}</p>
+        </header>
+
+        <section
+          className="relative overflow-hidden rounded-3xl p-5 text-white shadow-xl sheen"
+          style={{ background: "linear-gradient(135deg,#312e81 0%,#4338ca 50%,#0e7490 100%)" }}
+        >
+          <p className="text-xs font-semibold uppercase tracking-wider text-white/80">
+            {isDriver ? "Total earned" : "Total spent"}
+          </p>
+          <p className="text-4xl font-extrabold tracking-tight mt-1">
+            <Num value={Math.round(total)} prefix="KES " />
+          </p>
+          <div className="flex gap-6 mt-3 text-sm">
+            <div>
+              <p className="text-white/80 text-xs">{isDriver ? "Jobs completed" : "Trips completed"}</p>
+              <p className="font-bold">
+                <Num value={done.length} />
+              </p>
+            </div>
+            <div>
+              <p className="text-white/80 text-xs">All bookings</p>
+              <p className="font-bold">
+                <Num value={data.items.length} />
+              </p>
+            </div>
+          </div>
+        </section>
 
         {isDriver && <DriverRating driverId={data.userId} showComments={false} />}
 
-        <div className="grid grid-cols-2 gap-3">
-          <div className="bg-white rounded-2xl shadow p-4">
-            <p className="text-sm text-gray-700">{isDriver ? "Jobs completed" : "Trips completed"}</p>
-            <p className="text-2xl font-bold"><CountUp value={done.length} /></p>
-          </div>
-          <div className="bg-white rounded-2xl shadow p-4">
-            <p className="text-sm text-gray-700">{isDriver ? "Total earned" : "Total spent"}</p>
-            <p className="text-2xl font-bold text-indigo-800">KES <CountUp value={Math.round(total)} /></p>
-          </div>
-        </div>
-
-        <div className="flex gap-2 overflow-x-auto">
-          {FILTERS.map((f, i) => (
-            <button
-              key={f.label}
-              onClick={() => setFilter(i)}
-              className={`px-4 py-2 rounded-full text-sm font-semibold border-2 whitespace-nowrap ${
-                filter === i ? "bg-indigo-600 text-white border-indigo-600" : "bg-white border-indigo-200"
-              }`}
-            >
-              {f.label}
-            </button>
-          ))}
-        </div>
-
-        {shown.length === 0 && <p className="text-gray-700">Nothing here yet.</p>}
-
-        {shown.map((i) => (
-          <div key={i.id} className="bg-white rounded-2xl shadow p-4 text-sm space-y-1">
-            <div className="flex justify-between items-center">
-              <span className="font-bold">{i.task_type}</span>
-              <span className={`px-2 py-1 rounded-full text-xs font-semibold capitalize ${STATUS_STYLE[i.status] ?? "bg-gray-200"}`}>
-                {i.status.replace("_", " ")}
-              </span>
-            </div>
-            <p className="text-gray-700">
-              {new Date(i.scheduled_at).toLocaleString()} · {i.duration_hours}h
-            </p>
-            {i.destination && <p>📍 {i.destination}</p>}
-            <p className="font-semibold">
-              KES {Number(isDriver && i.driver_earnings ? i.driver_earnings : i.price).toLocaleString()}
-              {i.paid && <span className="ml-2 text-green-700">Paid ✓</span>}
-            </p>
-
-            {i.refund_status === "needed" && (
-              <p className="font-semibold text-indigo-800">Refund requested. We will send it to your M-Pesa.</p>
-            )}
-            {i.refund_status === "refunded" && <p className="font-semibold text-green-700">Refunded ✓</p>}
-
-            <Link href={`/report?booking=${i.id}`} className="inline-block text-xs underline font-semibold pt-1">
-              Report a problem
-            </Link>
-              {!isDriver && !i.paid && !i.driver_id && (i.status === "expired" || i.status === "cancelled") && (
-              <button onClick={() => remove(i.id)} className="ml-3 text-xs underline font-semibold text-red-600">
-                Remove
-              </button>
-            )}
-
-            {/* Rating: only here, at the bottom of a completed job */}
-            {!isDriver && i.status === "completed" && i.driver_id && (
-              i.my_rating !== null ? (
-                <p className="font-semibold pt-2 border-t">
-                  You rated this driver <span className="text-yellow-500">{"★".repeat(i.my_rating)}</span>
-                </p>
-              ) : i.rating_skipped && !reopen.includes(i.id) ? (
-                <button
-                  onClick={() => setReopen([...reopen, i.id])}
-                  className="block pt-2 text-sm underline font-semibold"
+        <div className="flex gap-2 overflow-x-auto pb-1">
+          {FILTERS.map((f, i) => {
+            const on = filter === i;
+            return (
+              <button
+                key={f.label}
+                onClick={() => setFilter(i)}
+                className={`shrink-0 inline-flex items-center gap-2 px-3.5 py-2 rounded-full text-sm font-semibold border-2 ${
+                  on ? "bg-indigo-600 text-white border-indigo-600" : "bg-white border-indigo-200"
+                }`}
+              >
+                {f.label}
+                <span
+                  className={`min-w-5 h-5 px-1.5 rounded-full text-xs font-bold flex items-center justify-center ${
+                    on ? "bg-white/25" : "bg-indigo-100 text-indigo-800"
+                  }`}
                 >
-                  Rate this driver
-                </button>
-              ) : (
-                <RateDriver
-                  bookingId={i.id}
-                  customerId={data.userId}
-                  onDone={refresh}
-                  onSkip={() => skip(i.id)}
-                />
-              )
-            )}
-            
-            {isDriver && i.review && (
-              <p className="font-semibold pt-2 border-t">
-                Customer rated you <span className="text-yellow-500">{"★".repeat(i.review.rating)}</span>
-                {i.review.comment ? ` “${i.review.comment}”` : ""}
-              </p>
-            )}
+                  {counts[i]}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+
+        {shown.length === 0 && (
+          <div className="bg-white rounded-2xl shadow p-8 text-center space-y-2">
+            <div className="flex justify-center">
+              <Tile name="inbox" color="#6366f1" size="w-14 h-14" />
+            </div>
+            <p className="font-bold">Nothing here yet</p>
+            <p className="text-sm text-gray-700">
+              {isDriver ? "Jobs you accept will show up here." : "Your bookings will show up here."}
+            </p>
           </div>
-        ))}
+        )}
+
+        {shown.map((i, idx) => {
+          const st = STATUS[i.status] ?? { label: i.status, color: "#6b7280" };
+          const label = dayLabel(i.scheduled_at);
+          const head = idx === 0 || dayLabel(shown[idx - 1].scheduled_at) !== label;
+          const amount = Number(isDriver && i.driver_earnings ? i.driver_earnings : i.price);
+          const canRemove = !isDriver && !i.paid && !i.driver_id && (i.status === "expired" || i.status === "cancelled");
+
+          return (
+            <Fragment key={i.id}>
+              {head && (
+                <h2 className="text-xs font-bold uppercase tracking-wider text-gray-700 pt-1">{label}</h2>
+              )}
+
+              <article
+                className="slide-in bg-white rounded-2xl shadow overflow-hidden flex"
+                style={{ animationDelay: `${Math.min(idx, 8) * 40}ms` }}
+              >
+                <div className="w-1.5 shrink-0" style={{ background: st.color }} />
+                <div className="flex-1 min-w-0 p-4 space-y-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <h3 className="font-bold leading-tight">{i.task_type}</h3>
+                      <p className="text-xs text-gray-700 mt-1 flex items-center gap-1.5">
+                        <Icon name="clock" className="w-3.5 h-3.5" />
+                        {timeLabel(i.scheduled_at)}
+                        <span aria-hidden="true">·</span>
+                        {i.duration_hours} h
+                      </p>
+                    </div>
+                    <Pill text={st.label} color={st.color} />
+                  </div>
+
+                  <div className="flex items-end justify-between gap-3">
+                    <div>
+                      <p className="text-[11px] font-bold uppercase tracking-wider text-gray-700">
+                        {isDriver ? "You earn" : "Amount"}
+                      </p>
+                      <p className="text-2xl font-extrabold tracking-tight">{money(amount)}</p>
+                    </div>
+                    {i.paid && <Pill text="Paid" color="#059669" />}
+                  </div>
+
+                  {i.destination && (
+                    <div className="flex items-start gap-2.5 rounded-xl bg-indigo-50 p-3">
+                      <span className="text-indigo-700 mt-0.5">
+                        <Icon name="pin" className="w-4 h-4" />
+                      </span>
+                      <p className="text-sm font-semibold break-words min-w-0">{i.destination}</p>
+                    </div>
+                  )}
+
+                  {i.refund_status !== "none" && (
+                    <div
+                      className="flex items-center gap-2.5 rounded-xl p-3 text-sm font-semibold"
+                      style={{
+                        background: `color-mix(in srgb, ${i.refund_status === "refunded" ? "#059669" : "#d97706"} 12%, var(--surface))`,
+                        color: i.refund_status === "refunded" ? "#059669" : "#d97706",
+                      }}
+                    >
+                      <Icon name="refund" className="w-4 h-4" />
+                      {i.refund_status === "refunded"
+                        ? "Refund sent to your M-Pesa"
+                        : "Refund requested. We will send it to your M-Pesa."}
+                    </div>
+                  )}
+
+                  <div className="flex items-center gap-4 pt-1">
+                    <Link href={`/report?booking=${i.id}`} className="inline-flex items-center gap-1.5 text-xs font-bold text-gray-700">
+                      <Icon name="flag" className="w-4 h-4" />
+                      Report a problem
+                    </Link>
+                    {canRemove && (
+                      <button
+                        onClick={() => remove(i.id)}
+                        className="inline-flex items-center gap-1.5 text-xs font-bold text-red-600"
+                      >
+                        <Icon name="trash" className="w-4 h-4" />
+                        Remove
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Rating: only here, at the bottom of a completed job */}
+                  {!isDriver && i.status === "completed" && i.driver_id && (
+                    <div className="border-t border-indigo-100 pt-3">
+                      {i.my_rating !== null ? (
+                        <p className="flex items-center gap-2 text-sm font-semibold">
+                          <span className="text-yellow-500 tracking-wide">{"★".repeat(i.my_rating)}</span>
+                          You rated this driver
+                        </p>
+                      ) : i.rating_skipped && !reopen.includes(i.id) ? (
+                        <button
+                          onClick={() => setReopen([...reopen, i.id])}
+                          className="inline-flex items-center gap-1.5 text-sm font-bold text-indigo-700"
+                        >
+                          <Icon name="star" className="w-4 h-4" />
+                          Rate this driver
+                        </button>
+                      ) : (
+                        <RateDriver
+                          bookingId={i.id}
+                          customerId={data.userId}
+                          onDone={refresh}
+                          onSkip={() => skip(i.id)}
+                        />
+                      )}
+                    </div>
+                  )}
+
+                  {isDriver && i.review && (
+                    <div className="border-t border-indigo-100 pt-3 text-sm">
+                      <p className="flex items-center gap-2 font-semibold">
+                        <span className="text-yellow-500 tracking-wide">{"★".repeat(i.review.rating)}</span>
+                        Customer rating
+                      </p>
+                      {i.review.comment && <p className="text-gray-800 mt-1">“{i.review.comment}”</p>}
+                    </div>
+                  )}
+                </div>
+              </article>
+            </Fragment>
+          );
+        })}
       </div>
-      <BottomNav />
     </main>
   );
 }
