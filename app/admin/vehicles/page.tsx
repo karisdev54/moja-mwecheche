@@ -9,7 +9,7 @@ import { Empty, Icon, PageHeader, PersonRow, Pill, Stat } from "@/components/Adm
 import { alertDialog, confirmDialog, promptDialog } from "@/lib/dialog";
 import { toast } from "@/lib/toast";
 
-type Doc = { type: string; path: string; url: string };
+type Doc = { type: string; path: string; url: string; expires: string | null; days: number | null };
 type Car = {
   id: string;
   full_name: string | null;
@@ -23,16 +23,19 @@ type Car = {
 type State = { allowed: boolean; cars: Car[] };
 
 const LABEL: Record<string, { label: string; icon: string }> = {
-  logbook: { label: "Logbook", icon: "doc" },
-  car_photo: { label: "Car photo", icon: "car" },
+  logbook: { label: "Logbook or sales agreement", icon: "doc" },
+  car_photo: { label: "Plate photo", icon: "car" },
   insurance: { label: "Insurance", icon: "shield" },
+  inspection: { label: "NTSA inspection", icon: "verify" },
+  psv_badge: { label: "PSV badge", icon: "idcard" },
 };
 
 const CHECKS = [
-  "The plate on the logbook matches the plate shown below",
-  "The photo shows the same plate on the car",
+  "The plate on the logbook or agreement matches the plate shown above",
+  "The photo shows the same registration plate on the car",
   "The owner's name matches the account",
-  "The documents look genuine and are readable",
+  "Insurance and the NTSA inspection report are current, with a sensible expiry date",
+  "For drivers: the PSV badge is valid and in the driver's name",
 ];
 
 async function fetchCars(): Promise<State> {
@@ -47,10 +50,10 @@ async function fetchCars(): Promise<State> {
 
   const { data: docs } = await supabase
     .from("car_documents")
-    .select("user_id,doc_type,file_path,created_at")
+    .select("user_id,doc_type,file_path,expires_on,created_at")
     .in("user_id", rows.map((r) => r.id))
     .order("created_at", { ascending: true });
-  const list = (docs ?? []) as { user_id: string; doc_type: string; file_path: string }[];
+  const list = (docs ?? []) as { user_id: string; doc_type: string; file_path: string; expires_on: string | null }[];
 
   const urls = new Map<string, string>();
   if (list.length > 0) {
@@ -63,11 +66,17 @@ async function fetchCars(): Promise<State> {
   return {
     allowed: true,
     cars: rows.map((r) => {
-      const latest = new Map<string, string>();
-      list.filter((d) => d.user_id === r.id).forEach((d) => latest.set(d.doc_type, d.file_path));
+      const latest = new Map<string, { path: string; expires: string | null }>();
+      list.filter((d) => d.user_id === r.id).forEach((d) => latest.set(d.doc_type, { path: d.file_path, expires: d.expires_on }));
       return {
         ...r,
-        docs: [...latest.entries()].map(([type, path]) => ({ type, path, url: urls.get(path) ?? "" })),
+        docs: [...latest.entries()].map(([type, v]) => ({
+          type,
+          path: v.path,
+          url: urls.get(v.path) ?? "",
+          expires: v.expires,
+          days: v.expires ? Math.ceil((new Date(`${v.expires}T00:00:00`).getTime() - Date.now()) / 86400000) : null,
+        })),
       };
     }),
   };
@@ -93,7 +102,7 @@ export default function VehiclesPage() {
       reason = await promptDialog({
         title: "Reject this vehicle?",
         message: "The owner will see this reason and can upload again.",
-        placeholder: "For example: the plate on the photo does not match",
+        placeholder: "For example: the plate on the photo does not match the logbook",
         multiline: true,
         required: true,
         minLength: 5,
@@ -104,7 +113,7 @@ export default function VehiclesPage() {
     } else {
       const ok = await confirmDialog({
         title: "Approve this vehicle?",
-        message: "A verified tick will show next to the plate.",
+        message: "A verified tick will show next to the plate, and the owner can use the car on jobs.",
         confirmText: "Approve",
       });
       if (!ok) return;
@@ -132,7 +141,7 @@ export default function VehiclesPage() {
   return (
     <main className="min-h-screen bg-gray-50 p-4 pb-12">
       <div className="max-w-2xl mx-auto space-y-5 text-gray-900">
-        <PageHeader title="Vehicles" subtitle="Check logbooks and plates" />
+        <PageHeader title="Vehicles" subtitle="Check documents, plates and expiry dates" />
         <AdminNav />
 
         <div className="grid grid-cols-2 gap-3">
@@ -167,6 +176,7 @@ export default function VehiclesPage() {
                 {c.docs.map((d) => {
                   const meta = LABEL[d.type] ?? { label: d.type, icon: "doc" };
                   const img = /\.(jpe?g|png|webp|gif)$/i.test(d.path);
+                  const warn = d.days !== null && d.days < 30;
                   const inner = (
                     <>
                       {img && d.url ? (
@@ -177,9 +187,16 @@ export default function VehiclesPage() {
                           <Icon name={meta.icon} className="w-8 h-8" />
                         </span>
                       )}
-                      <span className="absolute inset-x-0 bottom-0 bg-black/60 text-white text-[11px] font-bold px-2 py-1.5 flex items-center gap-1.5">
-                        <Icon name={meta.icon} className="w-3.5 h-3.5" />
-                        {meta.label}
+                      <span className="absolute inset-x-0 bottom-0 bg-black/65 text-white text-[11px] font-bold px-2 py-1.5">
+                        <span className="flex items-center gap-1.5">
+                          <Icon name={meta.icon} className="w-3.5 h-3.5" />
+                          {meta.label}
+                        </span>
+                        {d.expires && (
+                          <span className={`block font-semibold ${warn ? "text-red-300" : "text-white/80"}`}>
+                            Expires {new Date(`${d.expires}T00:00:00`).toLocaleDateString([], { dateStyle: "medium" })}
+                          </span>
+                        )}
                       </span>
                     </>
                   );

@@ -70,6 +70,9 @@ export default function AdminSidebar() {
     title:"Profile", 
     sub:"View and edit your admin profile",
      n:0},
+    { href: "/admin/team",
+       label: "Team", 
+       n: 0 },
   ];
 
   useEffect(() => {

@@ -124,9 +124,9 @@ export default function EditProfilePage() {
           style={{ background: "linear-gradient(135deg,#312e81 0%,#4338ca 50%,#0e7490 100%)" }}
         >
           <div className="rounded-full p-1" style={{ background: "rgba(255,255,255,0.25)" }}>
-            <AvatarEditor src={avatar} initial={initial} busy={avatarBusy} onFile={onAvatar} size={96} />
+            <AvatarEditor src={avatar} initial={initial} busy={avatarBusy} onFile={onAvatar} size={112} />
           </div>
-          <p className="text-sm text-white/90">Tap the pen to change your picture</p>
+          <p className="text-sm text-white/90">Tap your picture to change it</p>
           {avatarMsg && <p className="text-sm font-semibold text-amber-200">{avatarMsg}</p>}
         </section>
 

@@ -108,6 +108,7 @@ export default function DriverJobs({
   const [tab, setTab] = useState<Tab>("now");
   const [now, setNow] = useState(0);
   const [hasCar, setHasCar] = useState<boolean | null>(null);
+  const [carOk, setCarOk] = useState<boolean | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [routeMsg, setRouteMsg] = useState("");
   const [shown, setShown] = useState<{ jobId: string; label: string; km: number; minutes: number } | null>(null);
@@ -141,11 +142,13 @@ export default function DriverJobs({
     refresh();
     supabase
       .from("profiles")
-      .select("has_car")
+      .select("has_car,car_status")
       .eq("id", driverId)
       .maybeSingle()
-      .then(({ data }) => {
-        if (active) setHasCar(data?.has_car ?? null);
+            .then(({ data }) => {
+        if (!active) return;
+        setHasCar(data?.has_car ?? null);
+        setCarOk(data?.car_status === "approved");
       });
 
     const timer = setInterval(refresh, 10000);
@@ -283,17 +286,17 @@ export default function DriverJobs({
     { v: "mine", label: "My jobs", icon: "car", n: mine.length },
   ];
 
-    const empty =
+      const needsVerify = hasCar === true && carOk === false;
+  const empty =
     tab === "mine"
       ? "You have no accepted jobs yet."
       : !online
         ? "You are offline. Tap Go online to see new jobs."
-        : tab === "now"
-          ? "No requests within 10 km right now. Stay online and new ones will appear here."
-          : hasCar === false
-            ? "No scheduled bookings near you yet. Bookings that need a driver's car are hidden because you have no car."
+        : needsVerify
+          ? "Verify your vehicle in Profile, My vehicle, to see jobs where you bring the car. Jobs where you drive the customer's car still appear here."
+          : tab === "now"
+            ? "No requests within 10 km right now. Stay online and new ones will appear here."
             : "No scheduled bookings near you yet. New ones will appear here.";
-
     return (
     <div className="space-y-3">
       {guideJob && guideTarget && (
@@ -358,7 +361,7 @@ export default function DriverJobs({
                     <span aria-hidden="true">·</span>
                     {new Date(j.scheduled_at).toLocaleString([], { dateStyle: "medium", timeStyle: "short" })}
                     <span aria-hidden="true">·</span>
-                    {j.duration_hours} h
+                    {j.route_km ?? "-"} km
                   </p>
                 </div>
                 <div className="text-right shrink-0 space-y-1">

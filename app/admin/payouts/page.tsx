@@ -32,7 +32,7 @@ const FIELD =
 
 const STEPS = [
   { icon: "wallet", title: "Customers pay you", text: "The full price goes into your M-Pesa till." },
-  { icon: "chart", title: "The price is split", text: "When a job is completed, you keep 15% and the driver earns 85%." },
+  { icon: "chart", title: "The price is split", text: "When a job is completed, you keep a fixed amount for every kilometre, and the driver earns the rest." },
   { icon: "user", title: "The driver's share is owed", text: "It stays owed until you send it." },
   { icon: "send", title: "You send and record it", text: "Send the money from M-Pesa, then record the code here." },
 ];

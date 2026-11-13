@@ -9,9 +9,7 @@ import JobTracker from "@/components/JobTracker";
 import { alertDialog, confirmDialog, promptDialog } from "@/lib/dialog";
 import { Icon, PersonRow } from "@/components/AdminUI";
 
-const HOURLY_RATE = 1000; // KES per hour, keep in sync with hourly_rate in the bookings_guard SQL
 const TASKS = ["Airport transfer", "Wedding / event", "Business trip", "Errand / delivery", "Other"];
-const HOUR_CHIPS = [1, 2, 3, 4, 5, 6, 7, 8];
 
 const STATUS: Record<string, { label: string; color: string }> = {
   requested: { label: "Awaiting driver", color: "#d97706" },
@@ -81,6 +79,7 @@ async function fetchMyBookings(userId: string): Promise<Booking[]> {
     .limit(8);
   return (data ?? []) as unknown as Booking[];
 }
+
 const FIELD =
   "w-full border-2 border-indigo-200 rounded-xl p-3 bg-white focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100";
 
@@ -169,9 +168,9 @@ export default function CustomerPanel({
   const [timing, setTiming] = useState<Timing>("now");
   const [when, setWhen] = useState("");
   const [minWhen, setMinWhen] = useState("");
-  const [hoursText, setHoursText] = useState("1");
   const [vehicle, setVehicle] = useState<Vehicle>("driver_car");
   const [hasCar, setHasCar] = useState<boolean | null>(null);
+  const [carOk, setCarOk] = useState<boolean | null>(null);
   const [note, setNote] = useState("");
   const [destination, setDestination] = useState("");
   const [destCoords, setDestCoords] = useState<LngLat | null>(null);
@@ -190,9 +189,8 @@ export default function CustomerPanel({
   const [payMsg, setPayMsg] = useState("");
   const [nearby, setNearby] = useState<number | null>(null);
 
-  const hoursNum = Number(hoursText);
-  const hoursValid = hoursText.trim() !== "" && hoursNum >= 0.5 && hoursNum <= 72;
-  const estimate = hoursValid ? Math.round(hoursNum * HOURLY_RATE) : 0;
+  const [pricing, setPricing] = useState({ per_km: 25, min_fare: 0 });
+  const estimate = routeInfo ? Math.max(Math.round(routeInfo.km * pricing.per_km), pricing.min_fare) : 0;
 
   const cbRef = useRef(onAssignedChange);
   useEffect(() => {
@@ -235,16 +233,30 @@ export default function CustomerPanel({
     };
   }, [userId, apply]);
 
+  // Fetch pricing (per_km and min_fare) from the database
+  useEffect(() => {
+    let active = true;
+    supabase.rpc("get_pricing").then(({ data }) => {
+      if (active && data) setPricing({ per_km: Number(data.per_km), min_fare: Number(data.min_fare) });
+    });
+    return () => {
+      active = false;
+    };
+  }, []);
+
   // Does this customer own a car? (set when registering, changed in Profile, My car)
   useEffect(() => {
     let active = true;
     supabase
       .from("profiles")
-      .select("has_car")
+      .select("has_car,car_status")
       .eq("id", userId)
       .maybeSingle()
       .then(({ data }) => {
-        if (active) setHasCar(data?.has_car ?? null);
+        if (active) {
+          setHasCar(data?.has_car ?? null);
+          setCarOk(data?.car_status === "approved");
+        }
       });
     return () => {
       active = false;
@@ -264,7 +276,6 @@ export default function CustomerPanel({
     setTask(TASKS[0]);
     setTiming("now");
     setWhen("");
-    setHoursText("1");
     setVehicle("driver_car");
     setNote("");
     setMsg("");
@@ -295,7 +306,6 @@ export default function CustomerPanel({
 
   const rebook = (b: Booking) => {
     setTask(b.task_type);
-    setHoursText(String(b.duration_hours));
     setTiming(b.timing === "later" ? "later" : "now");
     setWhen("");
     openForm();
@@ -341,7 +351,7 @@ export default function CustomerPanel({
         return setMsg("Later bookings must be at least 1 hour from now. Choose Now for an immediate request.");
       }
     }
-    if (!hoursValid) return setMsg("Enter a duration between 0.5 and 72 hours.");
+    if (!routeInfo) return setMsg("Wait for the route and price to appear, then try again.");
     if (!destCoords) return setMsg("Choose where you are going. Pick a suggestion or use the map.");
 
     sendingRef.current = true;
@@ -358,7 +368,7 @@ export default function CustomerPanel({
           task_type: task,
           timing,
           scheduled_at: timing === "now" ? nowIso() : new Date(when).toISOString(),
-          duration_hours: hoursNum,
+          duration_hours: Math.max(0.5, Math.ceil((routeInfo.minutes / 60) * 2) / 2),
           vehicle,
           driver_note: note.trim() || null,
           pickup_lat: pos.coords.latitude,
@@ -391,7 +401,7 @@ export default function CustomerPanel({
     );
   };
 
-    const cancel = async (id: string, paid: boolean) => {
+  const cancel = async (id: string, paid: boolean) => {
     const ok = await confirmDialog(
       paid
         ? {
@@ -488,7 +498,7 @@ export default function CustomerPanel({
     (b) => ACTIVE.includes(b.status) || (b.status === "expired" && b.id === newestId)
   );
 
-    return (
+  return (
     <div className="space-y-4 text-gray-900">
       {notice && (
         <p className="slide-in flex items-center gap-2 rounded-2xl bg-green-50 text-green-800 text-sm font-semibold p-3">
@@ -547,44 +557,23 @@ export default function CustomerPanel({
             </div>
           </Block>
 
-          <Block icon="clock" title="How long">
-            <div className="flex flex-wrap gap-2">
-              {HOUR_CHIPS.map((h) => (
-                <Chip key={h} on={hoursText === String(h)} onClick={() => setHoursText(String(h))}>
-                  {h} h
-                </Chip>
-              ))}
-            </div>
-            <input
-              type="number"
-              inputMode="decimal"
-              min={0.5}
-              step={0.5}
-              className={FIELD}
-              placeholder="Or type your own, e.g. 2.5"
-              value={hoursText}
-              onChange={(e) => setHoursText(e.target.value)}
-            />
-            {hoursText !== "" && !hoursValid && (
-              <p className="text-xs text-red-600 font-semibold">Enter between 0.5 and 72 hours.</p>
-            )}
-          </Block>
-
           <Block icon="car" title="Which car">
             <div className="grid grid-cols-2 gap-2">
               <Choice on={vehicle === "driver_car"} onClick={() => setVehicle("driver_car")} icon="car" label="Driver's car" sub="The driver brings one" />
               <Choice
                 on={vehicle === "customer_car"}
-                disabled={hasCar !== true}
+                disabled={!(hasCar === true && carOk === true)}
                 onClick={() => setVehicle("customer_car")}
                 icon="key"
                 label="My car"
                 sub="The driver drives it"
               />
             </div>
-            {hasCar !== true && (
+            {!(hasCar === true && carOk === true) && (
               <p className="text-xs text-gray-700">
-                You have no car on your account, so My car is off. You can add one in Profile, My vehicle.
+                {hasCar === true
+                  ? "Your vehicle is not verified yet, so My car is off. Verify it in Profile, My vehicle."
+                  : "You have no car on your account, so My car is off. You can add one in Profile, My vehicle."}
               </p>
             )}
           </Block>
@@ -650,11 +639,13 @@ export default function CustomerPanel({
             style={{ background: "linear-gradient(135deg,#312e81 0%,#4338ca 50%,#0e7490 100%)" }}
           >
             <p className="text-xs font-semibold uppercase tracking-wider text-white/80">Estimated price</p>
-            <p className="text-3xl font-extrabold tracking-tight">KES {estimate.toLocaleString()}</p>
+            <p className="text-3xl font-extrabold tracking-tight">
+              {routeInfo ? `KES ${estimate.toLocaleString()}` : "Choose a destination"}
+            </p>
             <p className="text-xs text-white/80">
-              {hoursValid
-                ? `${hoursNum} hour${hoursNum === 1 ? "" : "s"} at KES ${HOURLY_RATE.toLocaleString()} per hour`
-                : "Enter how many hours you need"}
+              {routeInfo
+                ? `${routeInfo.km} km at KES ${pricing.per_km} per km`
+                : `The price is KES ${pricing.per_km} for every kilometre of your trip`}
             </p>
           </div>
 
@@ -711,7 +702,7 @@ export default function CustomerPanel({
                 </div>
                 <div className="text-right space-y-1">
                   {b.paid && <Pill text="Paid" color="#059669" />}
-                  <p className="text-xs text-gray-700">{b.duration_hours} h</p>
+                  <p className="text-xs text-gray-700">{b.route_km ? `${b.route_km} km` : ""}</p>
                 </div>
               </div>
 

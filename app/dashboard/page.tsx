@@ -10,6 +10,7 @@ import Sheet from "@/components/Sheet";
 import Loader from "@/components/Loader";
 import UserChip from "@/components/UserChip";
 import JobCompleteWatcher from "@/components/JobCompleteWatcher";
+import ApprovalWatcher from "@/components/ApprovalWatcher";
 import Badge from "@/components/Badge";
 import { Icon } from "@/components/AdminUI";
 import { inboxTotal, useInbox } from "@/lib/inbox";
@@ -37,7 +38,6 @@ export default function Dashboard() {
 
   useEffect(() => {
     let active = true;
-
     const load = async () => {
       const { data: s } = await supabase.auth.getSession();
       if (!s.session) {
@@ -60,7 +60,6 @@ export default function Dashboard() {
       setLoadError("");
       setProfile(data as Profile);
     };
-
     load();
     return () => {
       active = false;
@@ -78,10 +77,7 @@ export default function Dashboard() {
         <div className="w-full max-w-sm bg-white rounded-3xl shadow-xl overflow-hidden text-gray-900 pop-in">
           <div className="h-1.5" style={{ background: "linear-gradient(90deg,#dc2626,#f97316)" }} />
           <div className="p-6 text-center space-y-4">
-            <span
-              className="mx-auto w-14 h-14 rounded-2xl flex items-center justify-center"
-              style={{ background: "color-mix(in srgb, #dc2626 14%, var(--surface))", color: "#dc2626" }}
-            >
+            <span className="mx-auto w-14 h-14 rounded-2xl flex items-center justify-center" style={{ background: "color-mix(in srgb, #dc2626 14%, var(--surface))", color: "#dc2626" }}>
               <Icon name="alert" className="w-7 h-7" size={28} />
             </span>
             <div>
@@ -110,32 +106,29 @@ export default function Dashboard() {
 
   if (!profile) return <Loader full />;
 
+  const isCustomer = profile.role === "customer";
+  const isDriver = profile.role === "driver";
+
   return (
     <div className="fixed top-0 left-0 w-full h-dvh overflow-hidden">
       <div className="absolute inset-0">
-        <DriverMap assignedDriverId={assignedId} route={route} />
+        <DriverMap assignedDriverId={assignedId} route={route} showCount={isCustomer} />
       </div>
 
-      <div className="absolute top-0 left-0 right-0 z-10 flex items-center justify-between gap-2 px-3 pt-[max(0.75rem,env(safe-area-inset-top))]">
-        <UserChip
-          id={profile.id}
-          name={profile.full_name}
-          role={profile.role}
-          avatar={profile.avatar_url}
-          phone={profile.phone}
-        />
+      <div className="absolute top-0 left-0 z-10 px-3 pt-[max(0.75rem,env(safe-area-inset-top))]">
+        <UserChip id={profile.id} name={profile.full_name} role={profile.role} avatar={profile.avatar_url} phone={profile.phone} />
       </div>
 
       <div className="absolute bottom-0 left-0 right-0 z-10 flex flex-col gap-2 px-3 pt-3 pb-[calc(4.75rem+env(safe-area-inset-bottom))]">
-        {profile.role === "customer" && (
+        {isCustomer && (
           <div className="w-full max-w-md mx-auto">
-            <Sheet title="Book a driver">
+            <Sheet key={assignedId ?? "none"} title="Book a driver" defaultOpen={assignedId !== null}>
               <CustomerPanel userId={profile.id} onAssignedChange={setAssignedId} onRouteChange={setRoute} />
             </Sheet>
           </div>
         )}
 
-        {profile.role === "driver" && (
+        {isDriver && (
           <div className="w-full max-w-md mx-auto flex flex-col gap-2">
             <DriverGate driverId={profile.id} onRouteChange={setRoute} />
           </div>
@@ -161,9 +154,8 @@ export default function Dashboard() {
         )}
       </div>
 
-      {(profile.role === "customer" || profile.role === "driver") && (
-        <JobCompleteWatcher userId={profile.id} role={profile.role} />
-      )}
+      {(isCustomer || isDriver) && <JobCompleteWatcher userId={profile.id} role={profile.role as "customer" | "driver"} />}
+      {(isCustomer || isDriver) && <ApprovalWatcher userId={profile.id} role={profile.role as "customer" | "driver"} />}
     </div>
   );
 }

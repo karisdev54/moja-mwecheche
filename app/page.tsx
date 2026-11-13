@@ -23,7 +23,7 @@ const SAFETY = [
   { icon: "lock", title: "Safe payments", text: "Pay only through the app, never in cash on the road." },
 ];
 
-const PERKS = ["Keep 85% of every job", "Weekly payouts to your M-Pesa", "Jobs near you, on your schedule", "Build your reputation with ratings"];
+const PERKS = ["Keep most of every fare", "Weekly payouts to your M-Pesa", "Jobs near you, on your schedule", "Build your reputation with ratings"];
 
 export default function Home() {
   return (

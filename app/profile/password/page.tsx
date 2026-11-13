@@ -20,10 +20,7 @@ export default function PasswordPage() {
       }
       const { data: p } = await supabase.from("profiles").select("role").eq("id", u.user.id).maybeSingle();
       if (!active) return;
-      if (p?.role === "admin") {
-        router.replace("/profile");
-        return;
-      }
+      
       setEmail(u.user.email ?? "");
     })();
     return () => {

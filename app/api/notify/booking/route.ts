@@ -71,9 +71,10 @@ export async function POST(req: Request) {
           p_lng: r.pickup_lng,
           p_vehicle: r.vehicle,
         })
-      : await supabaseAdmin.rpc("online_driver_phones_near", {
+          : await supabaseAdmin.rpc("online_driver_phones_near", {
           p_lat: r.pickup_lat,
           p_lng: r.pickup_lng,
+          p_vehicle: r.vehicle,
         });
     const drivers = (data ?? []) as { driver_id: string; phone: string }[];
     const when = formatWhen(r.scheduled_at);
@@ -154,6 +155,7 @@ export async function POST(req: Request) {
       p_lng: n.pickup_lng,
       p_from_km: 10,
       p_to_km: 25,
+      p_vehicle: n.vehicle,
     });
     for (const d of (ring ?? []) as { driver_id: string; phone: string }[]) {
       jobs.push(

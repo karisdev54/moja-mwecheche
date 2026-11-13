@@ -221,6 +221,7 @@ export default function AdminHome() {
       items: [
         { href: "/admin/reports", icon: "flag", title: "Reports", sub: "Problems from users", color: "#f97316", n: inbox?.reports_open },
         { href: "/admin/notifications", icon: "bell", title: "Alerts", sub: "Money in and out feed", color: "#06b6d4" },
+        { href: "/admin/team", icon: "users", title: "Admin team", sub: "Add and remove admins", color: "#8b5cf6" },
       ],
     },
   ];

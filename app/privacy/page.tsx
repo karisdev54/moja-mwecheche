@@ -1,7 +1,10 @@
+import {  PageHeader } from "@/components/AdminUI";
+
 export default function PrivacyPage() {
   return (
     <main className="min-h-screen bg-gray-50 p-4">
       <div className="max-w-2xl mx-auto bg-white rounded-2xl shadow p-6 space-y-3 text-gray-900">
+        <PageHeader title="Privacy Policy" subtitle="Learn how we handle your data" href="/profile" />
         <h1 className="text-2xl font-bold">Privacy Policy</h1>
         <p>We collect: your name, phone, email, live location while you use the app, and for drivers, ID and licence documents.</p>
         <p>We use it to match drivers and customers, process payments, verify drivers, and keep users safe.</p>

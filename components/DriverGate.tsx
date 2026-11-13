@@ -6,7 +6,7 @@ import DriverToggle from "@/components/DriverToggle";
 import DriverJobs from "@/components/DriverJobs";
 import Sheet from "@/components/Sheet";
 import { Skeleton } from "@/components/Loader";
-import { Icon } from "@/components/AdminUI";
+import { Icon, Tile } from "@/components/AdminUI";
 import type { RouteView } from "@/lib/mapbox";
 
 type DriverRow = {
@@ -14,14 +14,24 @@ type DriverRow = {
   verification_status: "unsubmitted" | "pending" | "approved" | "rejected";
   rejection_reason: string | null;
 };
+type CarRow = { has_car: boolean | null; car_status: string; car_rejection_reason: string | null };
 
-async function fetchDriver(driverId: string): Promise<DriverRow | null> {
+async function fetchDriver(id: string): Promise<DriverRow | null> {
   const { data } = await supabase
     .from("drivers")
     .select("is_verified,verification_status,rejection_reason")
-    .eq("id", driverId)
+    .eq("id", id)
     .maybeSingle();
   return data as DriverRow | null;
+}
+
+async function fetchCar(id: string): Promise<CarRow | null> {
+  const { data } = await supabase
+    .from("profiles")
+    .select("has_car,car_status,car_rejection_reason")
+    .eq("id", id)
+    .maybeSingle();
+  return data as CarRow | null;
 }
 
 function Steps({ step, color }: { step: number; color: string }) {
@@ -35,9 +45,7 @@ function Steps({ step, color }: { step: number; color: string }) {
               className="relative w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold text-white"
               style={{ background: i <= step ? color : "#94a3b8" }}
             >
-              {i === step && (
-                <span className="live-ping absolute inset-0 rounded-full" style={{ background: color, opacity: 0.4 }} />
-              )}
+              {i === step && <span className="live-ping absolute inset-0 rounded-full" style={{ background: color, opacity: 0.4 }} />}
               <span className="relative flex items-center justify-center">
                 {i < step ? <Icon name="tick" className="w-4 h-4" /> : i + 1}
               </span>
@@ -47,14 +55,40 @@ function Steps({ step, color }: { step: number; color: string }) {
             </span>
           </div>
           {i < labels.length - 1 && (
-            <span
-              className="flex-1 h-0.5 mx-1.5 mt-3.5 rounded-full"
-              style={{ background: i < step ? color : "#94a3b8", opacity: i < step ? 1 : 0.5 }}
-            />
+            <span className="flex-1 h-0.5 mx-1.5 mt-3.5 rounded-full" style={{ background: i < step ? color : "#94a3b8", opacity: i < step ? 1 : 0.5 }} />
           )}
         </div>
       ))}
     </div>
+  );
+}
+
+function VehicleBanner({ car }: { car: CarRow }) {
+  if (car.has_car !== true || car.car_status === "approved") return null;
+  const s = car.car_status;
+  const pending = s === "pending";
+  const bad = s === "rejected" || s === "expired";
+  const color = pending ? "#4338ca" : bad ? "#dc2626" : "#d97706";
+  const title = pending ? "Vehicle under review" : s === "expired" ? "A vehicle document expired" : s === "rejected" ? "Vehicle not accepted" : "Verify your vehicle";
+  const text = pending
+    ? "We are checking your documents. Jobs where you bring the car open up once you are approved."
+    : bad
+      ? car.car_rejection_reason || "Upload the documents again and submit."
+      : "Add your insurance, NTSA inspection report, logbook, plate photo and PSV badge to take jobs where you bring the car.";
+
+  return (
+    <Link
+      href="/profile/car"
+      className="slide-in flex items-center gap-3 rounded-2xl bg-white shadow p-3 text-gray-900 active:scale-[0.98]"
+      style={{ borderLeft: `4px solid ${color}` }}
+    >
+      <Tile name={pending ? "clock" : bad ? "alert" : "car"} color={color} size="w-10 h-10" />
+      <div className="flex-1 min-w-0">
+        <p className="font-bold text-sm leading-tight">{title}</p>
+        <p className="text-xs text-gray-700">{text}</p>
+      </div>
+      <Icon name="chevron" className="w-4 h-4 text-gray-700" />
+    </Link>
   );
 }
 
@@ -66,35 +100,28 @@ export default function DriverGate({
   onRouteChange?: (r: RouteView | null) => void;
 }) {
   const [info, setInfo] = useState<DriverRow | null>(null);
+  const [car, setCar] = useState<CarRow | null>(null);
   const [online, setOnline] = useState(false);
 
   useEffect(() => {
     let active = true;
-
-    fetchDriver(driverId).then((d) => {
-      if (active) setInfo(d);
-    });
+    const refresh = () => {
+      fetchDriver(driverId).then((d) => active && setInfo(d));
+      fetchCar(driverId).then((c) => active && setCar(c));
+    };
+    refresh();
 
     const channel = supabase
       .channel("my-driver-status")
-      .on(
-        "postgres_changes",
-        { event: "UPDATE", schema: "public", table: "drivers", filter: `id=eq.${driverId}` },
-        (payload: { new: Partial<DriverRow> }) => {
-          const n = payload.new;
-          if (active && n.verification_status) {
-            setInfo({
-              is_verified: !!n.is_verified,
-              verification_status: n.verification_status,
-              rejection_reason: n.rejection_reason ?? null,
-            });
-          }
-        }
-      )
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "drivers", filter: `id=eq.${driverId}` }, refresh)
       .subscribe();
 
+    const timer = setInterval(refresh, 20000);
+    window.addEventListener("focus", refresh);
     return () => {
       active = false;
+      clearInterval(timer);
+      window.removeEventListener("focus", refresh);
       supabase.removeChannel(channel);
     };
   }, [driverId]);
@@ -115,6 +142,7 @@ export default function DriverGate({
         <div className="flex justify-center">
           <DriverToggle driverId={driverId} onOnlineChange={setOnline} />
         </div>
+        {car && <VehicleBanner car={car} />}
         <Sheet title="My jobs">
           <DriverJobs driverId={driverId} online={online} onRouteChange={onRouteChange} />
         </Sheet>
@@ -153,10 +181,7 @@ export default function DriverGate({
         </div>
 
         {rejected && info.rejection_reason && (
-          <div
-            className="flex items-start gap-2.5 rounded-xl p-3 text-sm font-semibold"
-            style={{ background: "color-mix(in srgb, #dc2626 10%, var(--surface))", color: "#dc2626" }}
-          >
+          <div className="flex items-start gap-2.5 rounded-xl p-3 text-sm font-semibold" style={{ background: "color-mix(in srgb, #dc2626 10%, var(--surface))", color: "#dc2626" }}>
             <Icon name="info" className="w-4 h-4 mt-0.5" />
             <span>{info.rejection_reason}</span>
           </div>

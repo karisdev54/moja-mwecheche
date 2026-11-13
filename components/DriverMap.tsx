@@ -80,9 +80,11 @@ function pinEl(): HTMLElement {
 export default function DriverMap({
   assignedDriverId = null,
   route = null,
+  showCount = false,
 }: {
   assignedDriverId?: string | null;
   route?: RouteView | null;
+  showCount?: boolean;
 }) {
   const container = useRef<HTMLDivElement>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
@@ -391,29 +393,30 @@ export default function DriverMap({
     navigator.geolocation.getCurrentPosition((p) => go([p.coords.longitude, p.coords.latitude]));
   };
 
-  return (
+    return (
     <div className="relative h-full w-full">
       <div ref={container} className="h-full w-full" />
 
       {/* Hidden while driver guidance is running, because the guidance banner sits in the same spot */}
       {!route?.follow && (
-        <>
+        <div className="absolute right-3 top-[max(0.75rem,env(safe-area-inset-top))] z-10 flex items-center gap-2">
+          {showCount && (
+            <div className="inline-flex items-center gap-2 bg-white rounded-full shadow-lg px-3 h-11 text-xs font-bold text-gray-900">
+              <span className="relative flex w-2 h-2">
+                {count > 0 && <span className="live-ping absolute inline-flex w-full h-full rounded-full bg-emerald-500" />}
+                <span className={`relative inline-flex w-2 h-2 rounded-full ${count > 0 ? "bg-emerald-500" : "bg-gray-400"}`} />
+              </span>
+              {count === 0 ? "None online" : `${count} online`}
+            </div>
+          )}
           <button
             onClick={locate}
             aria-label="Centre the map on my location"
-            className="absolute right-3 top-[calc(env(safe-area-inset-top)+4.75rem)] z-10 w-11 h-11 rounded-2xl bg-white shadow-lg flex items-center justify-center text-indigo-700 active:scale-90 transition-transform"
+            className="w-11 h-11 rounded-full bg-white shadow-lg flex items-center justify-center text-indigo-700 active:scale-90 transition-transform"
           >
             <Icon name="locate" className="w-5 h-5" />
           </button>
-
-          <div className="absolute left-3 top-[calc(env(safe-area-inset-top)+4.9rem)] z-10 inline-flex items-center gap-2 bg-white rounded-full shadow-lg px-3 py-1.5 text-xs font-bold text-gray-900">
-            <span className="relative flex w-2 h-2">
-              {count > 0 && <span className="live-ping absolute inline-flex w-full h-full rounded-full bg-emerald-500" />}
-              <span className={`relative inline-flex w-2 h-2 rounded-full ${count > 0 ? "bg-emerald-500" : "bg-gray-400"}`} />
-            </span>
-            {count === 0 ? "No drivers online" : `${count} driver${count === 1 ? "" : "s"} online`}
-          </div>
-        </>
+        </div>
       )}
     </div>
   );

@@ -24,6 +24,7 @@ type Item = {
   rating_skipped: boolean;
   my_rating: number | null;
   review: { rating: number; comment: string | null } | null;
+  route_km: number | null;
 };
 type Data = { userId: string; role: string; items: Item[] };
 
@@ -70,7 +71,7 @@ async function fetchActivity(): Promise<Data | "login"> {
   const { data } = await supabase
     .from("bookings")
     .select(
-      "id,task_type,scheduled_at,duration_hours,destination,price,status,paid,driver_id,driver_earnings,refund_status,rating_skipped"
+      "id,task_type,scheduled_at,duration_hours,destination,price,status,paid,driver_id,driver_earnings,refund_status,rating_skipped,route_km"
     )
     .eq(column, u.user.id)
     .order("scheduled_at", { ascending: false })
@@ -249,7 +250,7 @@ export default function ActivityPage() {
                         <Icon name="clock" className="w-3.5 h-3.5" />
                         {timeLabel(i.scheduled_at)}
                         <span aria-hidden="true">·</span>
-                        {i.duration_hours} h
+                        {i.route_km ?? "-"} km
                       </p>
                     </div>
                     <Pill text={st.label} color={st.color} />

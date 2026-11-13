@@ -11,6 +11,7 @@ type Done = {
   driver_earnings: number | null;
   duration_hours: number;
   destination: string | null;
+  route_km: number | null;
 };
 
 const KEY = "seen-complete";
@@ -51,7 +52,7 @@ async function fetchUnseen(userId: string, role: string): Promise<Done | null> {
   const since = new Date(Date.now() - 24 * 3600 * 1000).toISOString();
   const { data } = await supabase
     .from("bookings")
-    .select("id,task_type,price,driver_earnings,duration_hours,destination")
+    .select("id,task_type,price,driver_earnings,duration_hours,destination,route_km")
     .eq(col, userId)
     .eq("status", "completed")
     .gte("completed_at", since)
@@ -193,9 +194,9 @@ export default function JobCompleteWatcher({ userId, role }: { userId: string; r
               <p className="text-xl font-extrabold text-indigo-800">KES {Math.round(amount).toLocaleString()}</p>
             </div>
             <div className="rounded-2xl border-2 border-indigo-200 bg-indigo-50 p-3">
-              <p className="text-xs">Duration</p>
+              <p className="text-xs">Distance</p>
               <p className="text-xl font-extrabold text-indigo-800">
-                {job.duration_hours} h
+                {job.route_km ?? "-"} km
               </p>
             </div>
           </div>
