@@ -8,8 +8,16 @@ import { Empty, Icon, PageHeader, Pill, Stat } from "@/components/AdminUI";
 import { alertDialog, confirmDialog } from "@/lib/dialog";
 import { friendlyError } from "@/lib/net";
 import { toast } from "@/lib/toast";
+import AvatarEditor from "@/components/AvatarEditor";
 
-type Admin = { id: string; full_name: string | null; email: string | null; created_at: string; last_sign_in_at: string | null };
+type Admin = {
+  id: string;
+  full_name: string | null;
+  email: string | null;
+  created_at: string;
+  last_sign_in_at: string | null;
+  avatar_url: string | null;
+};
 type State = { allowed: boolean; me: string; admins: Admin[] };
 
 const FIELD =
@@ -47,6 +55,32 @@ function Field({ icon, children }: { icon: string; children: React.ReactNode }) 
   );
 }
 
+/** Round avatar for a row: real picture if available, otherwise the initial. */
+function RowAvatar({ src, name, email }: { src: string | null; name: string | null; email: string | null }) {
+  const [failed, setFailed] = useState(false);
+  const initial = (name || email || "?").trim().charAt(0).toUpperCase();
+
+  if (src && !failed) {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        src={src}
+        alt={name ?? "Admin"}
+        onError={() => setFailed(true)}
+        className="block w-11 h-11 rounded-full object-cover shrink-0 border-2 border-white shadow"
+      />
+    );
+  }
+  return (
+    <span
+      className="w-11 h-11 rounded-full flex items-center justify-center text-base font-extrabold text-white shrink-0"
+      style={{ background: "#8b5cf6" }}
+    >
+      {initial}
+    </span>
+  );
+}
+
 export default function TeamPage() {
   const [state, setState] = useState<State | null>(null);
   const [name, setName] = useState("");
@@ -57,6 +91,14 @@ export default function TeamPage() {
   const [removing, setRemoving] = useState<string | null>(null);
   const [msg, setMsg] = useState("");
 
+  // Logged-in admin's own avatar (for the editor card)
+  const [avatar, setAvatar] = useState<string | null>(null);
+  const [initial, setInitial] = useState("?");
+  const [avatarBusy, setAvatarBusy] = useState(false);
+  const [avatarMsg, setAvatarMsg] = useState("");
+
+  const uid = state?.me ?? "";
+
   useEffect(() => {
     let active = true;
     fetchTeam().then((s) => {
@@ -66,6 +108,25 @@ export default function TeamPage() {
       active = false;
     };
   }, []);
+
+  // Load the logged-in admin's own profile picture
+  useEffect(() => {
+    if (!uid) return;
+    let active = true;
+    supabase
+      .from("profiles")
+      .select("full_name, avatar_url")
+      .eq("id", uid)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (!active || !data) return;
+        setInitial((data.full_name || "?").trim().charAt(0).toUpperCase());
+        if (data.avatar_url) setAvatar(data.avatar_url);
+      });
+    return () => {
+      active = false;
+    };
+  }, [uid]);
 
   const create = async () => {
     if (busy) return;
@@ -104,6 +165,28 @@ export default function TeamPage() {
     fetchTeam().then(setState);
   };
 
+  // Save the logged-in admin's own avatar
+  const onAvatar = async (file: File) => {
+    if (!uid) return;
+    setAvatarMsg("");
+    setAvatarBusy(true);
+    const path = `${uid}/avatar.jpg`;
+    const up = await supabase.storage.from("avatars").upload(path, file, { upsert: true, contentType: file.type });
+    if (up.error) {
+      setAvatarMsg(up.error.message);
+      setAvatarBusy(false);
+      return;
+    }
+    const url = `${supabase.storage.from("avatars").getPublicUrl(path).data.publicUrl}?v=${Date.now()}`;
+    const { error } = await supabase.from("profiles").update({ avatar_url: url }).eq("id", uid);
+    setAvatarBusy(false);
+    if (error) return setAvatarMsg(error.message);
+    setAvatar(url);
+    // Refresh the list so the row avatar updates too
+    fetchTeam().then(setState);
+    toast("Picture updated", { tone: "ok" });
+  };
+
   const remove = async (a: Admin) => {
     const ok = await confirmDialog({
       title: `Remove ${a.full_name || "this admin"}?`,
@@ -136,7 +219,10 @@ export default function TeamPage() {
   if (!state.allowed) {
     return (
       <p className="p-6">
-        Not authorized. <Link href="/login" className="underline">Log in as admin</Link>
+        Not authorized.{" "}
+        <Link href="/login" className="underline">
+          Log in as admin
+        </Link>
       </p>
     );
   }
@@ -152,6 +238,9 @@ export default function TeamPage() {
           <Stat icon="shield" color="#059669" label="Signed in as you" value={1} />
         </div>
 
+               
+        
+
         <section className="bg-white rounded-2xl shadow p-4 space-y-4">
           <div>
             <h2 className="font-bold">Add an admin</h2>
@@ -162,7 +251,16 @@ export default function TeamPage() {
             <input className={FIELD} placeholder="Full name" autoComplete="off" value={name} onChange={(e) => setName(e.target.value)} />
           </Field>
           <Field icon="mail">
-            <input className={FIELD} type="email" inputMode="email" autoCapitalize="none" autoComplete="off" placeholder="Email" value={email} onChange={(e) => setEmail(e.target.value)} />
+            <input
+              className={FIELD}
+              type="email"
+              inputMode="email"
+              autoCapitalize="none"
+              autoComplete="off"
+              placeholder="Email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+            />
           </Field>
           <div className="space-y-2">
             <Field icon="lock">
@@ -211,7 +309,8 @@ export default function TeamPage() {
             <span className="text-indigo-600 mt-0.5">
               <Icon name="info" className="w-4 h-4" />
             </span>
-            Send the password by a private channel, and ask them to change it from Profile, Change password, after their first login.
+            Send the password by a private channel, and ask them to change it from Profile, Change password, after their
+            first login.
           </p>
 
           {msg && (
@@ -232,15 +331,15 @@ export default function TeamPage() {
         </section>
 
         <h2 className="text-xs font-bold uppercase tracking-wider text-gray-700">Current admins</h2>
-        {state.admins.length === 0 && <Empty icon="users" title="No admins found" text="Something is wrong. Check the database." />}
+        {state.admins.length === 0 && (
+          <Empty icon="users" title="No admins found" text="Something is wrong. Check the database." />
+        )}
 
         {state.admins.map((a) => {
           const mine = a.id === state.me;
           return (
             <article key={a.id} className="bg-white rounded-2xl shadow p-4 flex items-center gap-3">
-              <span className="w-11 h-11 rounded-full flex items-center justify-center text-base font-extrabold text-white shrink-0" style={{ background: "#8b5cf6" }}>
-                {(a.full_name || a.email || "?").trim().charAt(0).toUpperCase()}
-              </span>
+              <RowAvatar src={a.avatar_url} name={a.full_name} email={a.email} />
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
                   <p className="font-bold truncate">{a.full_name || "Admin"}</p>
@@ -248,7 +347,9 @@ export default function TeamPage() {
                 </div>
                 <p className="text-xs text-gray-700 truncate">{a.email}</p>
                 <p className="text-[11px] text-gray-700">
-                  {a.last_sign_in_at ? `Last sign-in ${new Date(a.last_sign_in_at).toLocaleDateString()}` : "Has not signed in yet"}
+                  {a.last_sign_in_at
+                    ? `Last sign-in ${new Date(a.last_sign_in_at).toLocaleDateString()}`
+                    : "Has not signed in yet"}
                 </p>
               </div>
               {!mine && (
