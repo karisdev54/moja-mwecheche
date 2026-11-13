@@ -71,8 +71,13 @@ export default function AdminSidebar() {
     sub:"View and edit your admin profile",
      n:0},
     { href: "/admin/team",
-       label: "Team", 
+       title: "Team", 
+       sub: "Manage your admin team members",
        n: 0 },
+       {href:"/dashboard", 
+    title:"Map", 
+    sub:"Back to Map",
+     n:0}
   ];
 
   useEffect(() => {
