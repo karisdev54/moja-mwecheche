@@ -8,6 +8,7 @@ import PlateBadge from "@/components/PlateBadge";
 import { Empty, Icon, PageHeader, PersonRow, Pill, Stat } from "@/components/AdminUI";
 import { alertDialog, confirmDialog, promptDialog } from "@/lib/dialog";
 import { toast } from "@/lib/toast";
+import { fetchAvatars } from "@/lib/avatars";
 
 type Doc = { type: string; path: string; url: string; expires: string | null; days: number | null };
 type Car = {
@@ -18,6 +19,7 @@ type Car = {
   role: string;
   car_plate: string | null;
   car_details: string | null;
+  avatar: string | null;
   docs: Doc[];
 };
 type State = { allowed: boolean; cars: Car[] };
@@ -43,11 +45,12 @@ async function fetchCars(): Promise<State> {
   if (!u.user) return { allowed: false, cars: [] };
   const { data: me } = await supabase.from("profiles").select("role").eq("id", u.user.id).maybeSingle();
   if (me?.role !== "admin") return { allowed: false, cars: [] };
-
+    
   const { data } = await supabase.rpc("admin_pending_cars");
   const rows = (data ?? []) as Omit<Car, "docs">[];
   if (rows.length === 0) return { allowed: true, cars: [] };
-
+  const av = await fetchAvatars(rows.map((r) => r.id))
+  
   const { data: docs } = await supabase
     .from("car_documents")
     .select("user_id,doc_type,file_path,expires_on,created_at")
@@ -74,6 +77,7 @@ async function fetchCars(): Promise<State> {
           type,
           path: v.path,
           url: urls.get(v.path) ?? "",
+          avatar: av[r.id] ?? null,
           expires: v.expires,
           days: v.expires ? Math.ceil((new Date(`${v.expires}T00:00:00`).getTime() - Date.now()) / 86400000) : null,
         })),
@@ -168,7 +172,7 @@ export default function VehiclesPage() {
                 <Pill text="Pending" color="#d97706" />
               </div>
 
-              <PersonRow role={c.role === "driver" ? "Driver" : "Customer"} name={c.full_name} phone={c.phone}>
+              <PersonRow role={c.role === "driver" ? "Driver" : "Customer"} name={c.full_name} phone={c.phone} avatar={c.avatar}>
                 <p className="text-xs text-gray-700 truncate">{c.email}</p>
               </PersonRow>
 

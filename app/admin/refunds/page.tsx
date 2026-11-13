@@ -7,6 +7,7 @@ import AdminNav from "@/components/AdminNav";
 import AdminTodo from "@/components/AdminTodo";
 import { Empty, Icon, PageHeader, PersonRow, Pill, Stat, Tile } from "@/components/AdminUI";
 import { toast } from "@/lib/toast";
+import Avatar from "@/components/Avatar";
 
 type Refund = {
   id: string;
@@ -16,7 +17,7 @@ type Refund = {
   refund_status: string;
   refund_reference: string | null;
   refunded_at: string | null;
-  customer: { full_name: string | null; phone: string | null } | null;
+  customer: { full_name: string | null; phone: string | null; avatar_url: string | null } | null;
   receipt: string | null;
   pay_phone: string | null;
 };
@@ -44,7 +45,7 @@ async function fetchRefunds(): Promise<State> {
   const { data } = await supabase
     .from("bookings")
     .select(
-      "id,task_type,scheduled_at,refund_amount,refund_status,refund_reference,refunded_at,customer:customer_id(full_name,phone)"
+      "id,task_type,scheduled_at,refund_amount,refund_status,refund_reference,refunded_at,customer:customer_id(full_name,phone,avatar_url)"
     )
     .in("refund_status", ["needed", "refunded"])
     .order("created_at", { ascending: false })
@@ -184,7 +185,7 @@ export default function RefundsPage() {
                 {new Date(r.scheduled_at).toLocaleString([], { dateStyle: "medium", timeStyle: "short" })}
               </p>
 
-              <PersonRow role="Customer" name={r.customer?.full_name} phone={r.customer?.phone} empty="Deleted account" />
+              <PersonRow role="Customer" name={r.customer?.full_name} phone={r.customer?.phone} avatar={r.customer?.avatar_url} empty="Deleted account" />
 
               <div className="rounded-xl bg-indigo-50 p-3 space-y-2">
                 <Detail label="Paid from" value={r.pay_phone === "TEST" ? "Test payment" : r.pay_phone} copyable={r.pay_phone !== "TEST"} />
@@ -244,7 +245,7 @@ export default function RefundsPage() {
         {done.length === 0 && <p className="text-sm text-gray-700">None yet.</p>}
         {done.map((r) => (
           <div key={r.id} className="bg-white rounded-2xl shadow p-3 flex items-center gap-3">
-            <Tile name="check" color="#059669" />
+            <Avatar src={r.customer?.avatar_url} name={r.customer?.full_name} size={44} />
             <div className="flex-1 min-w-0">
               <p className="font-bold truncate">{r.customer?.full_name || "Deleted account"}</p>
               <p className="text-xs text-gray-700 truncate">

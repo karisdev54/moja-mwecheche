@@ -9,6 +9,7 @@ import JobTracker from "@/components/JobTracker";
 import { alertDialog, confirmDialog, promptDialog } from "@/lib/dialog";
 import { Icon, PersonRow } from "@/components/AdminUI";
 
+
 const TASKS = ["Airport transfer", "Wedding / event", "Business trip", "Errand / delivery", "Other"];
 
 const STATUS: Record<string, { label: string; color: string }> = {
@@ -43,6 +44,7 @@ type Booking = {
     has_car: boolean | null;
     car_plate: string | null;
     car_status: string | null;
+    avatar_url: string | null;
   } | null;
   widened_at: string | null;
   route_km: number | null;
@@ -72,7 +74,7 @@ async function fetchMyBookings(userId: string): Promise<Booking[]> {
   const { data } = await supabase
     .from("bookings")
     .select(
-      "id,task_type,scheduled_at,duration_hours,destination,price,status,paid,driver_id,refund_status,widened_at,route_km,route_min,vehicle,driver_note,timing,driver:driver_id(full_name,phone,car_details,has_car,car_plate,car_status)"
+      "id,task_type,scheduled_at,duration_hours,destination,price,status,paid,driver_id,refund_status,widened_at,route_km,route_min,vehicle,driver_note,timing,driver:driver_id(full_name,phone,car_details,has_car,car_plate,car_status,avatar_url)"
     )
     .eq("customer_id", userId)
     .order("created_at", { ascending: false })
@@ -759,7 +761,7 @@ export default function CustomerPanel({
               )}
 
               {b.driver && b.status !== "cancelled" && (
-                <PersonRow role="Your driver" name={b.driver.full_name} phone={live ? b.driver.phone : null}>
+                <PersonRow role="Your driver" name={b.driver.full_name} phone={live ? b.driver.phone : null} avatar={b.driver.avatar_url}>
                   {b.vehicle === "driver_car" && b.driver.car_plate && live && (
                     <div className="flex items-center gap-2 mt-1.5 flex-wrap">
                       <PlateBadge plate={b.driver.car_plate} small verified={b.driver.car_status === "approved"} />

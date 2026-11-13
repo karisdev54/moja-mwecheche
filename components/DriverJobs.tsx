@@ -27,7 +27,7 @@ type Job = {
   vehicle: string;
   driver_note: string | null;
   timing: string;
-  customer: { full_name: string | null; phone: string | null; car_plate: string | null; car_details: string | null } | null;
+  customer: { full_name: string | null; phone: string | null; car_plate: string | null; car_details: string | null; avatar_url: string | null; } | null;
 };
 
 type Tab = "now" | "later" | "mine";
@@ -43,7 +43,7 @@ async function fetchOpenJobs(): Promise<Job[]> {
   const { data } = await supabase
     .from("bookings")
     .select(
-      "id,driver_id,task_type,scheduled_at,duration_hours,destination,price,status,paid,pickup_lat,pickup_lng,dest_lat,dest_lng,route_km,route_min,vehicle,driver_note,timing,customer:customer_id(full_name,phone,car_plate,car_details)"
+      "id,driver_id,task_type,scheduled_at,duration_hours,destination,price,status,paid,pickup_lat,pickup_lng,dest_lat,dest_lng,route_km,route_min,vehicle,driver_note,timing,customer:customer_id(full_name,phone,car_plate,car_details,avatar_url)"
     )
     .in("status", ["requested", "accepted", "in_progress"])
     .order("scheduled_at", { ascending: true });
@@ -396,7 +396,7 @@ export default function DriverJobs({
               </div>
 
               {live && j.customer && (
-                <PersonRow role="Customer" name={j.customer.full_name} phone={j.customer.phone}>
+                <PersonRow role="Customer" name={j.customer.full_name} phone={j.customer.phone} avatar={j.customer.avatar_url}>
                   {j.vehicle === "customer_car" && j.customer.car_plate && (
                     <div className="flex items-center gap-2 mt-1.5 flex-wrap">
                       <PlateBadge plate={j.customer.car_plate} small />

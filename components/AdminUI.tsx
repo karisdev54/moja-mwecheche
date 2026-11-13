@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
+import Avatar from "@/components/Avatar";
 
 export const ICONS: Record<string, string[]> = {
   verify: ["M12 3l7 3v5c0 5-3.5 8-7 10-3.5-2-7-5-7-10V6l7-3z", "M9 12l2 2 4-4"],
@@ -230,21 +231,20 @@ export function PersonRow({
   role,
   name,
   phone,
+  avatar,
   empty = "Not assigned yet",
   children,
 }: {
   role: string;
   name: string | null | undefined;
   phone?: string | null;
+  avatar?: string | null;
   empty?: string;
   children?: React.ReactNode;
 }) {
-  const initial = (name ?? "").trim().charAt(0).toUpperCase();
   return (
     <div className="flex items-center gap-3 rounded-xl border border-indigo-100 p-3">
-      <span className="w-10 h-10 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center shrink-0 text-sm font-bold">
-        {initial || <Icon name="user" className="w-4 h-4" />}
-      </span>
+      <Avatar src={avatar} name={name} size={44} />
       <div className="flex-1 min-w-0">
         <p className="text-[11px] font-bold uppercase tracking-wider text-gray-700">{role}</p>
         <p className="text-sm font-semibold truncate">{name || empty}</p>
@@ -262,6 +262,7 @@ export function PersonRow({
     </div>
   );
 }
+
 export function Pill({ text, color }: { text: string; color: string }) {
   return (
     <span

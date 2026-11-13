@@ -5,6 +5,7 @@ import { supabase } from "@/lib/supabase";
 import Loader from "@/components/Loader";
 import AdminNav from "@/components/AdminNav";
 import AdminTodo from "@/components/AdminTodo";
+import Avatar from "@/components/Avatar";
 import { Empty, Icon, Num, PageHeader, Pill, Stat, Tile } from "@/components/AdminUI";
 import { toast } from "@/lib/toast";
 
@@ -15,6 +16,7 @@ type Balance = {
   earned: number;
   paid_out: number;
   owed: number;
+  avatar: string | null;
 };
 type Payout = {
   id: string;
@@ -22,7 +24,8 @@ type Payout = {
   mpesa_reference: string | null;
   note: string | null;
   created_at: string;
-  driver: { full_name: string | null } | null;
+  driver_name: string | null;
+  driver_avatar: string | null;
 };
 type State = { allowed: boolean; balances: Balance[]; payouts: Payout[]; commission: number };
 
@@ -56,21 +59,43 @@ async function fetchAll(): Promise<State> {
   const { data: bal } = await supabase.rpc("admin_driver_balances");
   const { data: pay } = await supabase
     .from("payouts")
-    .select("id,amount,mpesa_reference,note,created_at,driver:driver_id(full_name)")
+    .select("id,driver_id,amount,mpesa_reference,note,created_at")
     .order("created_at", { ascending: false })
     .limit(30);
   const { data: stats } = await supabase.rpc("admin_stats", { p_days: 0 });
 
+  const balances = (bal ?? []) as Omit<Balance, "avatar">[];
+  const payouts = (pay ?? []) as { id: string; driver_id: string | null; amount: number; mpesa_reference: string | null; note: string | null; created_at: string }[];
+
+  // One request for every name and picture on this page
+  const ids = [...new Set([...balances.map((b) => b.driver_id), ...payouts.map((p) => p.driver_id)].filter((x): x is string => !!x))];
+  const people = new Map<string, { full_name: string | null; avatar_url: string | null }>();
+  if (ids.length > 0) {
+    const { data: prof } = await supabase.from("profiles").select("id,full_name,avatar_url").in("id", ids);
+    ((prof ?? []) as { id: string; full_name: string | null; avatar_url: string | null }[]).forEach((p) =>
+      people.set(p.id, { full_name: p.full_name, avatar_url: p.avatar_url })
+    );
+  }
+
   return {
     allowed: true,
     commission: Number((stats as { commission?: number } | null)?.commission ?? 0),
-    balances: ((bal ?? []) as Balance[]).map((b) => ({
+    balances: balances.map((b) => ({
       ...b,
       earned: Number(b.earned),
       paid_out: Number(b.paid_out),
       owed: Number(b.owed),
+      avatar: people.get(b.driver_id)?.avatar_url ?? null,
     })),
-    payouts: ((pay ?? []) as unknown as Payout[]).map((p) => ({ ...p, amount: Number(p.amount) })),
+    payouts: payouts.map((p) => ({
+      id: p.id,
+      amount: Number(p.amount),
+      mpesa_reference: p.mpesa_reference,
+      note: p.note,
+      created_at: p.created_at,
+      driver_name: p.driver_id ? people.get(p.driver_id)?.full_name ?? null : null,
+      driver_avatar: p.driver_id ? people.get(p.driver_id)?.avatar_url ?? null : null,
+    })),
   };
 }
 
@@ -135,7 +160,8 @@ export default function PayoutsPage() {
 
   const totalOwed = state.balances.reduce((s, b) => s + Math.max(b.owed, 0), 0);
   const totalPaid = state.balances.reduce((s, b) => s + b.paid_out, 0);
-  const owedDrivers = state.balances.filter((b) => b.owed > 0).length;
+  const owedList = state.balances.filter((b) => b.owed > 0);
+  const owedDrivers = owedList.length;
   const share = totalOwed + totalPaid > 0 ? totalPaid / (totalOwed + totalPaid) : 1;
 
   return (
@@ -159,10 +185,29 @@ export default function PayoutsPage() {
                 {owedDrivers === 0 ? "Everyone is paid up" : `Across ${owedDrivers} driver${owedDrivers === 1 ? "" : "s"}`}
               </p>
             </div>
-            <span className="w-11 h-11 rounded-2xl bg-white/15 flex items-center justify-center">
+            <span className="w-11 h-11 rounded-2xl bg-white/15 flex items-center justify-center shrink-0">
               <Icon name="wallet" className="w-6 h-6" />
             </span>
           </div>
+
+          {owedList.length > 0 && (
+            <div className="flex items-center mt-3">
+              {owedList.slice(0, 5).map((b, i) => (
+                <span key={b.driver_id} className="rounded-full" style={{ marginLeft: i === 0 ? 0 : -10 }}>
+                  <Avatar src={b.avatar} name={b.full_name} size={34} ring="#ffffff" />
+                </span>
+              ))}
+              {owedList.length > 5 && (
+                <span
+                  className="ml-1.5 h-[34px] px-2.5 rounded-full bg-white/20 text-xs font-bold flex items-center"
+                  style={{ marginLeft: -10 }}
+                >
+                  +{owedList.length - 5}
+                </span>
+              )}
+            </div>
+          )}
+
           <div className="mt-4">
             <div className="h-2 rounded-full bg-white/25 overflow-hidden">
               <div className="h-2 rounded-full bg-white transition-[width] duration-700" style={{ width: `${Math.round(share * 100)}%` }} />
@@ -221,9 +266,7 @@ export default function PayoutsPage() {
               <div className="w-1.5 shrink-0" style={{ background: color }} />
               <div className="flex-1 min-w-0 p-4 space-y-3">
                 <div className="flex items-center gap-3">
-                  <span className="w-11 h-11 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center text-base font-extrabold shrink-0">
-                    {(b.full_name || "?").trim().charAt(0).toUpperCase()}
-                  </span>
+                  <Avatar src={b.avatar} name={b.full_name} size={44} />
                   <div className="flex-1 min-w-0">
                     <h3 className="font-bold leading-tight truncate">{b.full_name || "Unnamed driver"}</h3>
                     <p className="text-xs text-gray-700 truncate">{b.phone || "No phone saved"}</p>
@@ -320,9 +363,9 @@ export default function PayoutsPage() {
         {state.payouts.length === 0 && <p className="text-sm text-gray-700">Nothing recorded yet.</p>}
         {state.payouts.map((p) => (
           <div key={p.id} className="bg-white rounded-2xl shadow p-3 flex items-center gap-3">
-            <Tile name="wallet" color="#059669" />
+            <Avatar src={p.driver_avatar} name={p.driver_name} size={44} />
             <div className="flex-1 min-w-0">
-              <p className="font-bold truncate">{p.driver?.full_name || "Deleted account"}</p>
+              <p className="font-bold truncate">{p.driver_name || "Deleted account"}</p>
               <p className="text-xs text-gray-700 truncate">
                 {p.mpesa_reference} · {new Date(p.created_at).toLocaleDateString()}
                 {p.note ? ` · ${p.note}` : ""}

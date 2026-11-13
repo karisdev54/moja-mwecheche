@@ -8,6 +8,7 @@ import AdminTodo from "@/components/AdminTodo";
 import { Empty, Icon, PageHeader, PersonRow, Pill, Stat } from "@/components/AdminUI";
 import { alertDialog, confirmDialog, promptDialog } from "@/lib/dialog";
 import { toast } from "@/lib/toast";
+import { fetchAvatars } from "@/lib/avatars";
 
 type Doc = { id: string; doc_type: string; path: string; url: string };
 type Applicant = {
@@ -17,6 +18,7 @@ type Applicant = {
   email: string | null;
   docs: Doc[];
   submitted: string | null;
+  avatar: string | null;
 };
 type State = { allowed: boolean; pending: Applicant[]; at: number };
 
@@ -55,7 +57,7 @@ async function fetchData(): Promise<State> {
   const { data: drivers } = await supabase.rpc("admin_pending_drivers");
   const rows = (drivers ?? []) as { id: string; full_name: string | null; phone: string | null; email: string | null }[];
   if (rows.length === 0) return { allowed: true, pending: [], at: Date.now() };
-
+    const av = await fetchAvatars(rows.map((r) => r.id));
   const { data: docs } = await supabase
     .from("driver_documents")
     .select("id, driver_id, doc_type, file_path, created_at")
@@ -82,6 +84,7 @@ async function fetchData(): Promise<State> {
       return {
         ...r,
         submitted: mine.length ? mine[mine.length - 1].created_at : null,
+        avatar: av[r.id] ?? null,
         docs: [...latest.values()].map((d) => ({
           id: d.id,
           doc_type: d.doc_type,
@@ -195,7 +198,7 @@ export default function VerificationPage() {
                 <Pill text="Pending review" color="#d97706" />
               </div>
 
-              <PersonRow role="Applicant" name={a.full_name} phone={a.phone}>
+              <PersonRow role="Applicant" name={a.full_name} phone={a.phone} avatar={a.avatar}>
                 <p className="text-xs text-gray-700 truncate">{a.email || "No email"}</p>
               </PersonRow>
 

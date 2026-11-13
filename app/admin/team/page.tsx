@@ -8,7 +8,7 @@ import { Empty, Icon, PageHeader, Pill, Stat } from "@/components/AdminUI";
 import { alertDialog, confirmDialog } from "@/lib/dialog";
 import { friendlyError } from "@/lib/net";
 import { toast } from "@/lib/toast";
-import AvatarEditor from "@/components/AvatarEditor";
+import Avatar from "@/components/Avatar";
 
 type Admin = {
   id: string;
@@ -55,31 +55,7 @@ function Field({ icon, children }: { icon: string; children: React.ReactNode }) 
   );
 }
 
-/** Round avatar for a row: real picture if available, otherwise the initial. */
-function RowAvatar({ src, name, email }: { src: string | null; name: string | null; email: string | null }) {
-  const [failed, setFailed] = useState(false);
-  const initial = (name || email || "?").trim().charAt(0).toUpperCase();
 
-  if (src && !failed) {
-    return (
-      // eslint-disable-next-line @next/next/no-img-element
-      <img
-        src={src}
-        alt={name ?? "Admin"}
-        onError={() => setFailed(true)}
-        className="block w-11 h-11 rounded-full object-cover shrink-0 border-2 border-white shadow"
-      />
-    );
-  }
-  return (
-    <span
-      className="w-11 h-11 rounded-full flex items-center justify-center text-base font-extrabold text-white shrink-0"
-      style={{ background: "#8b5cf6" }}
-    >
-      {initial}
-    </span>
-  );
-}
 
 export default function TeamPage() {
   const [state, setState] = useState<State | null>(null);
@@ -339,7 +315,7 @@ export default function TeamPage() {
           const mine = a.id === state.me;
           return (
             <article key={a.id} className="bg-white rounded-2xl shadow p-4 flex items-center gap-3">
-              <RowAvatar src={a.avatar_url} name={a.full_name} email={a.email} />
+              <Avatar src={a.avatar_url} name={a.full_name || a.email} size={44} />
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
                   <p className="font-bold truncate">{a.full_name || "Admin"}</p>

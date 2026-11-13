@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
+import Avatar from "@/components/Avatar";
 import { Icon } from "@/components/AdminUI";
 
 const TONE: Record<string, string> = { driver: "#6366f1", customer: "#0ea5e9", admin: "#8b5cf6" };
@@ -46,19 +47,7 @@ export default function UserChip({
       aria-label="Open my profile"
       className="flex items-center gap-2.5 bg-white rounded-full shadow-lg h-12 pl-1 pr-4 max-w-[58vw] active:scale-95 transition-transform"
     >
-      <span className="rounded-full p-[2px] shrink-0" style={{ background: color }}>
-        {avatar ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={avatar} alt="" className="block w-10 h-10 rounded-full object-cover border-2 border-white" />
-        ) : (
-          <span
-            className="w-10 h-10 rounded-full flex items-center justify-center text-base font-extrabold text-white border-2 border-white"
-            style={{ background: color }}
-          >
-            {first.charAt(0).toUpperCase()}
-          </span>
-        )}
-      </span>
+      <Avatar src={avatar} name={first} size={44} ring={color} />
 
       <span className="min-w-0 leading-tight">
         <span className="block text-sm font-bold text-gray-900 truncate">{first}</span>

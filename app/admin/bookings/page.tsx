@@ -5,6 +5,7 @@ import { supabase } from "@/lib/supabase";
 import AdminNav from "@/components/AdminNav";
 import { Skeleton } from "@/components/Loader";
 import { Icon, Num, PageHeader, Tile } from "@/components/AdminUI";
+import Avatar from "@/components/Avatar";
 
 type B = {
   id: string;
@@ -21,6 +22,8 @@ type B = {
   driver_name: string | null;
   driver_phone: string | null;
   refund_status: string;
+  customer_avatar: string | null;
+  driver_avatar: string | null;
 };
 type Res = { key: string; rows: B[]; error: string };
 
@@ -65,21 +68,18 @@ function Person({
   role,
   name,
   phone,
-  icon,
+  avatar,
   empty,
 }: {
   role: string;
   name: string | null;
   phone: string | null;
-  icon: string;
+  avatar: string | null;
   empty: string;
 }) {
-  const initial = (name ?? "").trim().charAt(0).toUpperCase();
   return (
     <div className="flex items-center gap-3 rounded-xl border border-indigo-100 p-3">
-      <span className="w-9 h-9 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center shrink-0 text-sm font-bold">
-        {initial || <Icon name={icon} className="w-4 h-4" />}
-      </span>
+      <Avatar src={avatar} name={name} size={40} />
       <div className="flex-1 min-w-0">
         <p className="text-[11px] font-bold uppercase tracking-wider text-gray-700">{role}</p>
         <p className="text-sm font-semibold truncate">{name || empty}</p>
@@ -97,7 +97,6 @@ function Person({
     </div>
   );
 }
-
 function CardSkeleton() {
   return (
     <div className="bg-white rounded-2xl shadow p-4 space-y-3">
@@ -315,8 +314,8 @@ export default function AdminBookingsPage() {
                     </div>
 
                     <div className="grid gap-2 sm:grid-cols-2">
-                      <Person role="Customer" name={b.customer_name} phone={b.customer_phone} icon="user" empty="Customer" />
-                      <Person role="Driver" name={b.driver_name} phone={b.driver_phone} icon="car" empty="Not assigned yet" />
+                      <Person role="Customer" name={b.customer_name} phone={b.customer_phone} avatar={b.customer_avatar} empty="Customer" />
+                      <Person role="Driver" name={b.driver_name} phone={b.driver_phone} avatar={b.driver_avatar} empty="Not assigned yet" />
                     </div>
 
                     {b.destination && (

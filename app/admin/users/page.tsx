@@ -8,7 +8,7 @@ import PlateBadge from "@/components/PlateBadge";
 import { Empty, Icon, PageHeader, Pill, Stat } from "@/components/AdminUI";
 import { alertDialog, confirmDialog, promptDialog } from "@/lib/dialog";
 import { toast } from "@/lib/toast";
-
+import Avatar from "@/components/Avatar";
 type U = {
   id: string;
   full_name: string | null;
@@ -24,6 +24,7 @@ type U = {
   is_available: boolean | null;
   jobs_done: number;
   avg_rating: number | null;
+  avatar_url: string | null;
 };
 type Res = { key: string; rows: U[]; error: string };
 
@@ -257,12 +258,7 @@ export default function UsersPage() {
                 <div className="w-1.5 shrink-0" style={{ background: color }} />
                 <div className="flex-1 min-w-0 p-4 space-y-3">
                   <div className="flex items-start gap-3">
-                    <span
-                      className="w-11 h-11 rounded-full flex items-center justify-center text-base font-extrabold text-white shrink-0"
-                      style={{ background: color }}
-                    >
-                      {(u.full_name || u.email || "?").trim().charAt(0).toUpperCase()}
-                    </span>
+                      <Avatar src={u.avatar_url} name={u.full_name || u.email} size={44} ring={color} />
                     <div className="flex-1 min-w-0">
                       <h3 className="font-bold leading-tight truncate">{u.full_name || "Unnamed"}</h3>
                       <div className="flex flex-wrap gap-1.5 mt-1.5">

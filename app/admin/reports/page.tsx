@@ -8,6 +8,7 @@ import AdminTodo from "@/components/AdminTodo";
 import { Empty, Icon, PageHeader, PersonRow, Pill, Stat, Tile } from "@/components/AdminUI";
 import { promptDialog } from "@/lib/dialog";
 import { toast } from "@/lib/toast";
+import Avatar from "@/components/Avatar";
 
 type Report = {
   id: string;
@@ -16,7 +17,7 @@ type Report = {
   status: string;
   created_at: string;
   admin_note: string | null;
-  user: { full_name: string | null; phone: string | null; role: string } | null;
+  user: { full_name: string | null; phone: string | null; role: string; avatar_url: string | null } | null;
   booking: { task_type: string; scheduled_at: string } | null;
 };
 type State = { allowed: boolean; items: Report[]; at: number };
@@ -55,7 +56,7 @@ async function fetchReports(): Promise<State> {
   const { data } = await supabase
     .from("reports")
     .select(
-      "id,category,message,status,created_at,admin_note,user:user_id(full_name,phone,role),booking:booking_id(task_type,scheduled_at)"
+      "id,category,message,status,created_at,admin_note,user:user_id(full_name,phone,role,avatar_url),booking:booking_id(task_type,scheduled_at)"
     )
     .order("created_at", { ascending: false })
     .limit(80);
@@ -206,6 +207,7 @@ export default function AdminReportsPage() {
                   role={r.user?.role ? `Reported by, ${r.user.role}` : "Reported by"}
                   name={r.user?.full_name}
                   phone={r.user?.phone}
+                  avatar={r.user?.avatar_url}
                   empty="Deleted account"
                 />
 

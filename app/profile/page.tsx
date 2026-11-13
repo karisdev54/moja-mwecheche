@@ -11,6 +11,7 @@ import { useThemePref } from "@/lib/theme";
 import { inboxTotal, useInbox } from "@/lib/inbox";
 import { formatPlate } from "@/lib/validate";
 import { exitApp } from "@/lib/exit";
+import Avatar from "@/components/Avatar";
 
 const SUPPORT_EMAIL = "kariukiobadiah655@gmail.com"; // change to your real support email
 const THEME_LABEL = { light: "Light", dark: "Dark", system: "Auto" } as const;
@@ -253,14 +254,7 @@ export default function ProfilePage() {
         >
           <div className="flex items-center gap-4">
             <div className="float shrink-0 rounded-full p-1" style={{ background: "rgba(255,255,255,0.25)" }}>
-              {me.avatar_url ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={me.avatar_url} alt="Profile" className="w-20 h-20 rounded-full object-cover border-2 border-white" />
-              ) : (
-                <div className="w-20 h-20 rounded-full bg-white/20 border-2 border-white flex items-center justify-center text-3xl font-extrabold color-white">
-                  {initial}
-                </div>
-              )}
+              <Avatar src={me.avatar_url} name={me.full_name || me.email} size={84} ring="#ffffff" />
             </div>
 
             <div className="min-w-0 flex-1">
