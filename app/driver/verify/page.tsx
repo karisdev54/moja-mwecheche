@@ -7,6 +7,7 @@ import { compressImage } from "@/lib/image";
 import PhotoPicker from "@/components/PhotoPicker";
 import Loader from "@/components/Loader";
 import { Icon, PageHeader, Pill, Tile } from "@/components/AdminUI";
+import { friendlyError } from "@/lib/net";
 import { toast } from "@/lib/toast";
 
 const DOCS = [
@@ -16,6 +17,7 @@ const DOCS = [
 ];
 
 const TIPS = ["Use good light and avoid glare", "Show all four corners of the document", "Make sure the text is readable", "Use your own documents only"];
+const CAR_DOCS = ["Vehicle insurance", "NTSA inspection report", "Logbook or sales agreement", "Photo showing the registration plate", "PSV badge"];
 
 type Picked = { file: File; url: string | null };
 type Phase = "loading" | "form" | "pending" | "done";
@@ -25,6 +27,7 @@ export default function VerifyPage() {
   const [driverId, setDriverId] = useState<string | null>(null);
   const [status, setStatus] = useState("");
   const [reason, setReason] = useState<string | null>(null);
+  const [hasCar, setHasCar] = useState<boolean | null>(null);
   const [phase, setPhase] = useState<Phase>("loading");
   const [picked, setPicked] = useState<Record<string, Picked | undefined>>({});
   const [busy, setBusy] = useState(false);
@@ -56,6 +59,7 @@ export default function VerifyPage() {
         .select("is_verified,verification_status,rejection_reason")
         .eq("id", u.user.id)
         .maybeSingle();
+      const { data: p } = await supabase.from("profiles").select("has_car").eq("id", u.user.id).maybeSingle();
       if (!active) return;
       if (!data || data.is_verified) {
         router.replace("/dashboard");
@@ -64,6 +68,7 @@ export default function VerifyPage() {
       setDriverId(u.user.id);
       setStatus(data.verification_status);
       setReason(data.rejection_reason);
+      setHasCar(p?.has_car ?? null);
       setPhase(data.verification_status === "pending" ? "pending" : "form");
     })();
     return () => {
@@ -113,7 +118,7 @@ export default function VerifyPage() {
 
       const up = await supabase.storage.from("driver-docs").upload(path, f);
       if (up.error) {
-        setMsg(up.error.message);
+        setMsg(friendlyError(up.error.message));
         toast("Upload failed. Please try again.", { tone: "danger" });
         setBusy(false);
         setProg(0);
@@ -121,7 +126,7 @@ export default function VerifyPage() {
       }
       const ins = await supabase.from("driver_documents").insert({ driver_id: driverId, doc_type: d.type, file_path: path });
       if (ins.error) {
-        setMsg(ins.error.message);
+        setMsg(friendlyError(ins.error.message));
         setBusy(false);
         setProg(0);
         return;
@@ -132,7 +137,7 @@ export default function VerifyPage() {
     setProg(chosen.length / total);
     const { error } = await supabase.from("drivers").update({ verification_status: "pending" }).eq("id", driverId);
     if (error) {
-      setMsg(error.message);
+      setMsg(friendlyError(error.message));
       setBusy(false);
       setProg(0);
       return;
@@ -140,7 +145,6 @@ export default function VerifyPage() {
     setProg(1);
     setBusy(false);
     setPhase("done");
-    setTimeout(() => router.replace("/dashboard"), 2600);
   };
 
   if (phase === "loading") return <Loader full />;
@@ -148,7 +152,7 @@ export default function VerifyPage() {
   if (phase === "done") {
     return (
       <main className="min-h-dvh flex items-center justify-center p-5" style={{ background: "var(--bg)" }}>
-        <div className="w-full max-w-sm bg-white rounded-3xl shadow-2xl p-6 text-center space-y-3 text-gray-900 pop-in">
+        <div className="w-full max-w-sm bg-white rounded-3xl shadow-2xl p-6 text-center space-y-4 text-gray-900 pop-in">
           <div className="relative mx-auto w-20 h-20">
             <span className="pulse-ring absolute inset-0 rounded-full bg-green-400/50" />
             <svg viewBox="0 0 52 52" className="relative w-20 h-20">
@@ -156,9 +160,64 @@ export default function VerifyPage() {
               <path className="check-tick" d="M14 27l8 8 16-16" fill="none" stroke="#16a34a" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
           </div>
-          <h1 className="text-2xl font-extrabold">Submitted for review</h1>
-          <p className="text-sm text-gray-700">We will check your documents and update your dashboard as soon as you are approved.</p>
-          <p className="text-xs text-gray-700">Taking you back to the map...</p>
+
+          <div>
+            <h1 className="text-2xl font-extrabold">Documents submitted</h1>
+            <p className="text-sm text-gray-700 mt-1">
+              Documents take approximately 48 hours to review. You will be verified once they are approved, and we will tell you here as soon as it happens.
+            </p>
+          </div>
+
+          {hasCar === true ? (
+            <div className="text-left rounded-2xl bg-indigo-50 border border-indigo-100 p-3 space-y-2">
+              <p className="flex items-center gap-2 font-bold text-sm">
+                <span className="text-indigo-600">
+                  <Icon name="car" className="w-4 h-4" />
+                </span>
+                Next: add your vehicle documents
+              </p>
+              <p className="text-xs text-gray-700">Do it now to save time. You will need:</p>
+              <ul className="grid gap-1">
+                {CAR_DOCS.map((c) => (
+                  <li key={c} className="flex items-center gap-2 text-xs">
+                    <span className="text-indigo-600">
+                      <Icon name="tick" className="w-3 h-3" size={12} />
+                    </span>
+                    {c}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : (
+            <div className="text-left rounded-2xl bg-indigo-50 border border-indigo-100 p-3 text-sm">
+              <p className="font-bold">No car?</p>
+              <p className="text-xs text-gray-700 mt-0.5">
+                Once you are approved, you can take jobs where you drive the customer&apos;s car. If you get a car later, add it in Profile, My vehicle.
+              </p>
+            </div>
+          )}
+
+          <div className="space-y-2">
+            {hasCar === true ? (
+              <>
+                <Link href="/profile/car" className="btn-shine grad-bg block text-white font-bold rounded-2xl p-3.5 shadow-lg active:scale-[0.98]">
+                  Add vehicle documents
+                </Link>
+                <Link href="/dashboard" className="block w-full bg-white border-2 border-indigo-200 font-bold rounded-2xl p-3 active:scale-[0.98]">
+                  Skip for now
+                </Link>
+              </>
+            ) : (
+              <>
+                <Link href="/dashboard" className="btn-shine grad-bg block text-white font-bold rounded-2xl p-3.5 shadow-lg active:scale-[0.98]">
+                  Back to the map
+                </Link>
+                <Link href="/profile/car" className="block w-full bg-white border-2 border-indigo-200 font-bold rounded-2xl p-3 active:scale-[0.98]">
+                  I have a car
+                </Link>
+              </>
+            )}
+          </div>
         </div>
       </main>
     );
@@ -168,7 +227,7 @@ export default function VerifyPage() {
     return (
       <main className="min-h-screen bg-gray-50 p-4">
         <div className="max-w-md mx-auto space-y-5 text-gray-900 stagger">
-          <PageHeader title="Verification" subtitle="Your documents are being checked" href="/dashboard" />
+          <PageHeader title="Verification" subtitle="Your documents are being checked" href="/dashboard" back="Map" />
           <section
             className="relative overflow-hidden rounded-3xl p-6 text-white shadow-xl sheen space-y-4"
             style={{ background: "linear-gradient(135deg,#312e81 0%,#4338ca 50%,#0e7490 100%)" }}
@@ -179,11 +238,23 @@ export default function VerifyPage() {
             <div>
               <h2 className="text-2xl font-extrabold tracking-tight">Under review</h2>
               <p className="text-sm text-white/85 mt-1">
-                We are checking your documents. You can go online as soon as you are approved, and this will update by itself.
+                Documents take approximately 48 hours to review. You will be verified once they are approved, and this screen updates by itself.
               </p>
             </div>
             <div className="indeterminate h-1.5 rounded-full bg-white/25" />
           </section>
+
+          {hasCar === true && (
+            <Link href="/profile/car" className="flex items-center gap-3 bg-white rounded-2xl shadow p-4 active:scale-[0.98]">
+              <Tile name="car" color="#0ea5e9" />
+              <div className="flex-1 min-w-0">
+                <p className="font-bold">Add your vehicle documents</p>
+                <p className="text-xs text-gray-700">Needed for jobs where you bring the car</p>
+              </div>
+              <Icon name="chevron" className="w-4 h-4 text-gray-700" />
+            </Link>
+          )}
+
           <Link href="/dashboard" className="btn-shine grad-bg block text-center text-white font-bold rounded-2xl p-4 shadow-xl active:scale-[0.98]">
             Back to the map
           </Link>
@@ -195,7 +266,7 @@ export default function VerifyPage() {
   return (
     <main className="min-h-screen bg-gray-50 p-4 pb-40">
       <div className="max-w-md mx-auto space-y-5 text-gray-900">
-        <PageHeader title="Verify your account" subtitle="Upload your documents to start driving" href="/dashboard" />
+        <PageHeader title="Verify your account" subtitle="Upload your documents to start driving" href="/dashboard" back="Map" />
 
         <section
           className="relative overflow-hidden rounded-3xl p-5 text-white shadow-xl sheen"
@@ -221,13 +292,14 @@ export default function VerifyPage() {
           <p className="text-xs text-white/85 mt-2">
             {requiredDone ? "Ready to submit. Add the optional certificate if you have one." : "Add your ID and driving licence to continue."}
           </p>
+          <p className="flex items-center gap-2 text-xs text-white/90 mt-3 pt-3 border-t border-white/20">
+            <Icon name="clock" className="w-4 h-4" size={16} />
+            Review takes approximately 48 hours
+          </p>
         </section>
 
         {status === "rejected" && (
-          <div
-            className="slide-in flex items-start gap-3 rounded-2xl bg-white shadow p-4"
-            style={{ borderLeft: "4px solid #dc2626" }}
-          >
+          <div className="slide-in flex items-start gap-3 rounded-2xl bg-white shadow p-4" style={{ borderLeft: "4px solid #dc2626" }}>
             <Tile name="alert" color="#dc2626" />
             <div>
               <p className="font-bold">Your last submission was not accepted</p>
@@ -242,7 +314,7 @@ export default function VerifyPage() {
             {TIPS.map((t) => (
               <li key={t} className="flex items-center gap-2 text-sm">
                 <span className="w-5 h-5 rounded-full bg-green-100 text-green-700 flex items-center justify-center shrink-0">
-                  <Icon name="tick" className="w-3 h-3" />
+                  <Icon name="tick" className="w-3 h-3" size={12} />
                 </span>
                 {t}
               </li>
@@ -265,10 +337,7 @@ export default function VerifyPage() {
                     <p className="font-bold leading-tight">{d.label}</p>
                     <p className="text-xs text-gray-700">{d.hint}</p>
                   </div>
-                  <Pill
-                    text={p ? "Added" : d.required ? "Required" : "Optional"}
-                    color={p ? "#059669" : d.required ? "#d97706" : "#64748b"}
-                  />
+                  <Pill text={p ? "Added" : d.required ? "Required" : "Optional"} color={p ? "#059669" : d.required ? "#d97706" : "#64748b"} />
                 </div>
 
                 {p ? (
@@ -304,11 +373,21 @@ export default function VerifyPage() {
                   </div>
                 )}
 
-                <PhotoPicker allowPdf facing="environment" disabled={busy} onFile={(f) => choose(d.type, f)} />
+                <PhotoPicker allowPdf facing="environment" disabled={busy} change={!!p} onFile={(f) => choose(d.type, f)} />
               </div>
             </section>
           );
         })}
+
+        {hasCar === true && (
+          <section className="bg-white rounded-2xl shadow p-4 flex items-start gap-3">
+            <Tile name="car" color="#0ea5e9" />
+            <div>
+              <p className="font-bold">Next: your vehicle documents</p>
+              <p className="text-xs text-gray-700">After you submit, we will take you to add your insurance, NTSA inspection report, logbook, plate photo and PSV badge.</p>
+            </div>
+          </section>
+        )}
 
         {msg && (
           <p className="slide-in flex items-start gap-2 rounded-xl bg-red-50 text-red-700 text-sm font-semibold p-3">

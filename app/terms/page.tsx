@@ -1,8 +1,11 @@
-export default function PrivacyPage() {
+import { PageHeader } from "@/components/AdminUI";
+
+export default function TermsPage() {
   return (
     <main className="min-h-screen bg-gray-50 p-4">
       <div className="max-w-2xl mx-auto bg-white rounded-2xl shadow p-6 space-y-3 text-gray-900">
-        <h1 className="text-2xl font-bold">Privacy Policy</h1>
+        <PageHeader title="Terms of Service" subtitle="Learn the rules of using our app" href="/profile" />
+        <h1 className="text-2xl font-bold">Terms and Conditions</h1>
         <p>We collect: your name, phone, email, live location while you use the app, and for drivers, ID and licence documents.</p>
         <p>We use it to match drivers and customers, process payments, verify drivers, and keep users safe.</p>
         <p>Driver documents are stored privately and seen only by our verification team.</p>

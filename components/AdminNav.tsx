@@ -66,6 +66,11 @@ export default function AdminSidebar() {
       sub: "View alerts and recent platform activity",
       n: inbox ? inboxTotal(inbox) : 0,
     },
+    { href: "/admin/live", 
+      Title: "Live map",
+      sub: "View live driver and customer activity",
+     n: 0 
+    },
     {href:"/profile", 
     title:"Profile", 
     sub:"View and edit your admin profile",

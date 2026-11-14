@@ -65,26 +65,34 @@ function meEl(): HTMLElement {
   return el;
 }
 
-function pinEl(): HTMLElement {
+function pinEl(color = "#f59e0b"): HTMLElement {
   const el = document.createElement("div");
   el.style.width = "30px";
   el.style.height = "40px";
   el.innerHTML = `
     <svg viewBox="0 0 24 32" width="30" height="40" aria-hidden="true">
       <path d="M12 0C5.4 0 0 5.4 0 12c0 9 12 20 12 20s12-11 12-20C24 5.4 18.6 0 12 0z" fill="#f59e0b" stroke="#fff" stroke-width="1.5"/>
-      <circle cx="12" cy="12" r="4.5" fill="#fff"/>
+      <circle cx="12" cy="12" r="4.5" fill="${color}"/>
     </svg>`;
   return el;
 }
+
+export type MapPin = { id: string; lng: number; lat: number; color: string };
 
 export default function DriverMap({
   assignedDriverId = null,
   route = null,
   showCount = false,
+  pins = null,
+  focus = null,
+  overview = false,
 }: {
   assignedDriverId?: string | null;
   route?: RouteView | null;
   showCount?: boolean;
+  pins?: MapPin[] | null;
+  focus?: { lng: number; lat: number } | null;
+  overview?: boolean;
 }) {
   const container = useRef<HTMLDivElement>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
@@ -95,6 +103,8 @@ export default function DriverMap({
   const redrawRef = useRef<() => void>(() => {});
   const drawRouteRef = useRef<() => void>(() => {});
   const [count, setCount] = useState(0);
+  const pinRef = useRef<Record<string, mapboxgl.Marker>>({});
+  const overviewRef = useRef(overview);
 
   // Hooks must be called here, at the top of the component, never inside an effect
   const theme = useTheme();
@@ -128,7 +138,7 @@ export default function DriverMap({
       container: container.current,
       style: initialStyle,
       center: [36.8219, -1.2921],
-      zoom: 14,
+      zoom: overviewRef.current ? 11 : 14,
     });
     mapRef.current = map;
 
@@ -249,7 +259,7 @@ export default function DriverMap({
         meRef.current = ll;
         if (!markers["me"]) {
           markers["me"] = new mapboxgl.Marker({ element: meEl() }).setLngLat(ll).addTo(map);
-          if (!routeRef.current) map.flyTo({ center: ll, zoom: 14 });
+                    if (!routeRef.current && !overviewRef.current) map.flyTo({ center: ll, zoom: 16 });
         } else {
           markers["me"].setLngLat(ll);
         }
@@ -359,6 +369,7 @@ export default function DriverMap({
       supabase.removeChannel(channel);
       destMarker?.remove();
       Object.keys(markers).forEach((id) => markers[id].remove());
+      pinRef.current = {};
       mapRef.current = null;
       map.remove();
     };
@@ -375,15 +386,30 @@ export default function DriverMap({
   }, [route]);
 
   // Switch the map between light and dark when the theme changes
+    // Pins for jobs (used by the admin live map)
   useEffect(() => {
     const m = mapRef.current;
-    const next = styleFor(theme);
-    if (!m || styleRef.current === next) return;
-    styleRef.current = next;
-    m.setStyle(next);
-    // A new style wipes the route layers, so draw them again once it has loaded
-    m.once("style.load", () => drawRouteRef.current());
-  }, [theme]);
+    if (!m) return;
+    const have = pinRef.current;
+    const next = new Map((pins ?? []).map((p) => [p.id, p]));
+    Object.keys(have).forEach((id) => {
+      if (!next.has(id)) {
+        have[id].remove();
+        delete have[id];
+      }
+    });
+    next.forEach((p, id) => {
+      if (have[id]) have[id].setLngLat([p.lng, p.lat]);
+      else have[id] = new mapboxgl.Marker({ element: pinEl(p.color), anchor: "bottom" }).setLngLat([p.lng, p.lat]).addTo(m);
+    });
+  }, [pins]);
+
+  // Fly to a job the admin tapped
+  useEffect(() => {
+    const m = mapRef.current;
+    if (!m || !focus) return;
+    m.flyTo({ center: [focus.lng, focus.lat], zoom: 16, duration: 900 });
+  }, [focus]);
 
   const locate = () => {
     const m = mapRef.current;

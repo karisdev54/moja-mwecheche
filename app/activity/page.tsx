@@ -61,12 +61,12 @@ function Pill({ text, color }: { text: string; color: string }) {
   );
 }
 
-async function fetchActivity(): Promise<Data | "login"> {
+async function fetchActivity(): Promise<Data | "login" | "admin"> {
   const { data: u } = await supabase.auth.getUser();
   if (!u.user) return "login";
   const { data: me } = await supabase.from("profiles").select("role").eq("id", u.user.id).maybeSingle();
   const role = me?.role ?? "customer";
-
+  if (role === "admin") return "admin";
   const column = role === "driver" ? "driver_id" : "customer_id";
   const { data } = await supabase
     .from("bookings")
@@ -113,6 +113,7 @@ export default function ActivityPage() {
     fetchActivity().then((r) => {
       if (!active) return;
       if (r === "login") router.replace("/login");
+      else if (r === "admin") router.replace("/admin/notifications");
       else setData(r);
     });
     return () => {

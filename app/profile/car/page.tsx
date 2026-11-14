@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import Loader from "@/components/Loader";
@@ -131,6 +131,7 @@ export default function CarPage() {
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
 
+  // Free any preview pictures when this screen closes
   const stagedRef = useRef(staged);
   useEffect(() => {
     stagedRef.current = staged;
@@ -142,37 +143,44 @@ export default function CarPage() {
     []
   );
 
-  const load = async (first: boolean) => {
+  // One place that loads everything
+  const fetchAll = useCallback(async () => {
     const i = await fetchInfo();
-    if (!i) return router.replace("/login");
-    if (i.role === "admin") return router.replace("/profile");
+    if (!i) {
+      router.replace("/login");
+      return null;
+    }
+    if (i.role === "admin") {
+      router.replace("/profile");
+      return null;
+    }
     const d = await fetchDocs(i.uid);
-    setInfo(i);
-    setCar(i.saved);
-    setDocs(d);
-    setMinExpiry(isoDay(MIN_DAYS));
-    if (first) setEditing(i.saved.has === null);
-  };
+    return { i, d };
+  }, [router]);
 
   useEffect(() => {
     let active = true;
-    (async () => {
-      const i = await fetchInfo();
-      if (!active) return;
-      if (!i) return router.replace("/login");
-      if (i.role === "admin") return router.replace("/profile");
-      const d = await fetchDocs(i.uid);
-      if (!active) return;
-      setInfo(i);
-      setCar(i.saved);
-      setDocs(d);
+    fetchAll().then((r) => {
+      if (!active || !r) return;
+      setInfo(r.i);
+      setCar(r.i.saved);
+      setDocs(r.d);
       setMinExpiry(isoDay(MIN_DAYS));
-      setEditing(i.saved.has === null);
-    })();
+      setEditing(r.i.saved.has === null); // never answered: open for editing straight away
+    });
     return () => {
       active = false;
     };
-  }, [router]);
+  }, [fetchAll]);
+
+  const reload = async () => {
+    const r = await fetchAll();
+    if (!r) return;
+    setInfo(r.i);
+    setCar(r.i.saved);
+    setDocs(r.d);
+    setMinExpiry(isoDay(MIN_DAYS));
+  };
 
   const saveCar = async () => {
     if (busy) return;
@@ -192,12 +200,13 @@ export default function CarPage() {
       setBusy(false);
       return setMsg(friendlyError(friendlyDbError(error.message, error.code)));
     }
-    await load(false);
+    await reload();
     setBusy(false);
     setEditing(false);
     toast(car.has ? "Car saved. Now add your documents." : "Car updated", { tone: "ok" });
   };
 
+  // Choosing or changing a file keeps any expiry date already typed
   const stage = async (type: string, f: File) => {
     setMsg("");
     const ready = await compressImage(f);
@@ -205,7 +214,7 @@ export default function CarPage() {
     const old = staged[type];
     if (old?.url) URL.revokeObjectURL(old.url);
     const url = ready.type.startsWith("image/") ? URL.createObjectURL(ready) : null;
-    setStaged((p) => ({ ...p, [type]: { file: ready, url, expires: "" } }));
+    setStaged((p) => ({ ...p, [type]: { file: ready, url, expires: old?.expires ?? "" } }));
   };
 
   const unstage = (type: string) => {
@@ -256,7 +265,7 @@ export default function CarPage() {
       setBusy(false);
       return setMsg(friendlyError(error.message));
     }
-    await load(false);
+    await reload();
     setBusy(false);
     toast("Sent for review", { tone: "ok" });
   };
@@ -385,7 +394,9 @@ export default function CarPage() {
               )}
               {info.status === "pending" && (
                 <div className="space-y-2">
-                  <p className="text-sm text-gray-800">We are checking your documents. You will be told when it is done.</p>
+                  <p className="text-sm text-gray-800">
+                    We are checking your vehicle documents. This takes approximately 48 hours, and you will be told when it is done.
+                  </p>
                   <div className="indeterminate h-1.5 rounded-full bg-indigo-100" />
                 </div>
               )}
@@ -444,12 +455,15 @@ export default function CarPage() {
                             <button
                               type="button"
                               onClick={() => unstage(d.type)}
+                              disabled={uploading !== null}
                               aria-label="Remove this file"
-                              className="absolute top-2 right-2 w-8 h-8 rounded-full bg-black/60 text-white flex items-center justify-center active:scale-90"
+                              className="absolute top-2 right-2 w-8 h-8 rounded-full bg-black/60 text-white flex items-center justify-center active:scale-90 disabled:opacity-50"
                             >
                               <Icon name="close" className="w-4 h-4" />
                             </button>
                           </div>
+
+                          <PhotoPicker allowPdf facing="environment" disabled={uploading !== null} change onFile={(f) => stage(d.type, f)} />
 
                           {d.expires && (
                             <div className="space-y-1">
@@ -503,7 +517,15 @@ export default function CarPage() {
                               <span className="text-xs font-semibold">No file added yet</span>
                             </div>
                           )}
-                          {!locked && <PhotoPicker allowPdf facing="environment" disabled={uploading !== null} onFile={(f) => stage(d.type, f)} />}
+                          {!locked && (
+                            <PhotoPicker
+                              allowPdf
+                              facing="environment"
+                              disabled={uploading !== null}
+                              change={!!doc}
+                              onFile={(f) => stage(d.type, f)}
+                            />
+                          )}
                         </>
                       )}
                     </div>
@@ -547,6 +569,6 @@ export default function CarPage() {
           </>
         )}
       </div>
-      </main>
+    </main>
   );
 }

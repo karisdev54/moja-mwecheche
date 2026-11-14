@@ -1,7 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 import DriverMap from "@/components/DriverMap";
 import DriverGate from "@/components/DriverGate";
@@ -11,7 +10,6 @@ import Loader from "@/components/Loader";
 import UserChip from "@/components/UserChip";
 import JobCompleteWatcher from "@/components/JobCompleteWatcher";
 import ApprovalWatcher from "@/components/ApprovalWatcher";
-import Badge from "@/components/Badge";
 import { Icon } from "@/components/AdminUI";
 import { inboxTotal, useInbox } from "@/lib/inbox";
 import { friendlyError } from "@/lib/net";
@@ -33,8 +31,6 @@ export default function Dashboard() {
   const [assignedId, setAssignedId] = useState<string | null>(null);
   const [route, setRoute] = useState<RouteView | null>(null);
   const [tries, setTries] = useState(0);
-  const inbox = useInbox();
-  const waiting = inbox ? inboxTotal(inbox) : 0;
 
   useEffect(() => {
     let active = true;
@@ -53,6 +49,10 @@ export default function Dashboard() {
       if (!active) return;
       if (error) return setLoadError(friendlyError(error.message));
       if (!data) return setLoadError("No profile found for this account. Log out and sign up again.");
+            if (data.role === "admin") {
+        router.replace("/admin");
+        return;
+      }
       if (data.suspended) {
         router.replace("/suspended");
         return;
@@ -134,24 +134,7 @@ export default function Dashboard() {
           </div>
         )}
 
-        {profile.role === "admin" && (
-          <Link
-            href="/admin"
-            className="btn-shine grad-bg relative w-full max-w-md mx-auto flex items-center gap-3 text-white rounded-2xl p-3.5 shadow-xl active:scale-[0.98]"
-          >
-            <span className="w-11 h-11 rounded-xl bg-white/20 flex items-center justify-center shrink-0">
-              <Icon name="chart" className="w-6 h-6" />
-            </span>
-            <span className="flex-1">
-              <span className="block font-bold">Admin dashboard</span>
-              <span className="block text-xs text-white/85">
-                {waiting > 0 ? `${waiting} thing${waiting === 1 ? "" : "s"} waiting for you` : "Everything is up to date"}
-              </span>
-            </span>
-            {waiting > 0 && <Badge n={waiting} />}
-            <Icon name="chevron" className="w-5 h-5" />
-          </Link>
-        )}
+        
       </div>
 
       {(isCustomer || isDriver) && <JobCompleteWatcher userId={profile.id} role={profile.role as "customer" | "driver"} />}

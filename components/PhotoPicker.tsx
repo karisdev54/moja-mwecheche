@@ -7,14 +7,17 @@ export default function PhotoPicker({
   allowPdf = false,
   facing = "environment",
   disabled = false,
+  change = false,
 }: {
   onFile: (f: File) => void;
   allowPdf?: boolean;
   facing?: "user" | "environment";
   disabled?: boolean;
+  change?: boolean; // a file is already chosen: show one "Change photo" button instead of two
 }) {
   const cam = useRef<HTMLInputElement>(null);
   const gal = useRef<HTMLInputElement>(null);
+  const accept = allowPdf ? "image/*,application/pdf" : "image/*";
 
   const handle = (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0];
@@ -22,16 +25,27 @@ export default function PhotoPicker({
     if (f) onFile(f);
   };
 
+  if (change) {
+    return (
+      <>
+        <input ref={gal} type="file" accept={accept} className="hidden" onChange={handle} />
+        <button
+          type="button"
+          disabled={disabled}
+          onClick={() => gal.current?.click()}
+          className="w-full flex items-center justify-center gap-2 bg-white border-2 border-indigo-200 font-bold rounded-xl p-3 disabled:opacity-50 active:scale-95"
+        >
+          <Icon name="image" className="w-5 h-5" />
+          Change photo
+        </button>
+      </>
+    );
+  }
+
   return (
     <div className="grid grid-cols-2 gap-2">
       <input ref={cam} type="file" accept="image/*" capture={facing} className="hidden" onChange={handle} />
-      <input
-        ref={gal}
-        type="file"
-        accept={allowPdf ? "image/*,application/pdf" : "image/*"}
-        className="hidden"
-        onChange={handle}
-      />
+      <input ref={gal} type="file" accept={accept} className="hidden" onChange={handle} />
       <button
         type="button"
         disabled={disabled}

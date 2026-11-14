@@ -206,6 +206,7 @@ export default function AdminHome() {
         { href: "/admin/users", icon: "users", title: "Users", sub: "Search and suspend accounts", color: "#0ea5e9" },
         { href: "/admin/bookings", icon: "car", title: "Bookings", sub: "Every booking, with filters", color: "#10b981" },
         { href: "/admin/vehicles", icon: "car", title: "Vehicles", sub: "Approve logbooks and plates", color: "#0ea5e9", n: inbox?.cars_pending },
+        { href: "/admin/live", icon: "pin", title: "Live map", sub: "Drivers, requests and trips now", color: "#10b981" },
       ],
     },
     {
@@ -220,16 +221,16 @@ export default function AdminHome() {
       title: "Support",
       items: [
         { href: "/admin/reports", icon: "flag", title: "Reports", sub: "Problems from users", color: "#f97316", n: inbox?.reports_open },
-        { href: "/admin/notifications", icon: "bell", title: "Alerts", sub: "Money in and out feed", color: "#06b6d4" },
+        { href: "/admin/notifications", icon: "bell", title: "Activity", sub: "What needs you, money in and out", color: "#06b6d4" },
         { href: "/admin/team", icon: "users", title: "Admin team", sub: "Add and remove admins", color: "#8b5cf6" },
       ],
     },
   ];
 
   return (
-    <main className="min-h-screen bg-gray-50 p-4 pb-12">
+    <main className="min-h-screen bg-gray-50 p-4 pb-28">
       <div className="max-w-2xl mx-auto space-y-6 text-gray-900 stagger">
-        <PageHeader title="Dashboard" subtitle="brief and overview" />
+        <PageHeader title="Live Map" subtitle="brief and overview" href="/admin/live" />
                 <AdminNav />
 
         <section

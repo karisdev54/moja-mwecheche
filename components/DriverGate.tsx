@@ -155,10 +155,10 @@ export default function DriverGate({
   const color = pending ? "#4338ca" : rejected ? "#dc2626" : "#d97706";
   const title = pending ? "Documents under review" : rejected ? "Please upload again" : "Verify your account";
   const text = pending
-    ? "We are checking your documents. This screen updates by itself when you are approved."
+    ? "Documents take approximately 48 hours to review. You will be verified once they are approved, and this screen updates by itself."
     : rejected
       ? "Your last documents were not accepted. Upload clear photos to try again."
-      : "Upload your ID and driving licence to start accepting jobs. It takes about two minutes.";
+      : "Upload your ID and driving licence to start accepting jobs. Review takes approximately 48 hours.";
 
   return (
     <div className="slide-in relative overflow-hidden rounded-3xl bg-white shadow-xl text-gray-900">
