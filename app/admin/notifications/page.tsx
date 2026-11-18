@@ -3,7 +3,8 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 import Loader from "@/components/Loader";
-import { Empty, Icon, Pill, Stat, Tile } from "@/components/AdminUI";
+import AdminNav from "@/components/AdminNav";
+import { Empty, Icon, PageHeader, Pill, Stat, Tile } from "@/components/AdminUI";
 import { inboxTotal, useInbox } from "@/lib/inbox";
 
 type Ev = {
@@ -34,6 +35,7 @@ type Filter = (typeof FILTERS)[number];
 
 const kes = (n: number) => `KES ${Math.round(Number(n)).toLocaleString()}`;
 const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? "" : "s"}`;
+const n0 = (v: number | undefined) => v ?? 0;
 
 function ago(iso: string, now: number) {
   const s = Math.max(1, Math.round((now - new Date(iso).getTime()) / 1000));
@@ -86,20 +88,20 @@ export default function ActivityPage() {
 
   const todo: { icon: string; text: string; href: string; urgent?: boolean }[] = [];
   if (inbox) {
-    if (inbox.reports_safety > 0)
+    if (n0(inbox.reports_safety) > 0)
       todo.push({ icon: "alert", text: `${plural(inbox.reports_safety, "safety report")} need you now`, href: "/admin/reports", urgent: true });
-    if (inbox.drivers_pending > 0)
+    if (n0(inbox.drivers_pending) > 0)
       todo.push({ icon: "verify", text: `${plural(inbox.drivers_pending, "driver")} waiting for verification`, href: "/admin/verification" });
-    if (inbox.cars_pending > 0)
+    if (n0(inbox.cars_pending) > 0)
       todo.push({ icon: "car", text: `${plural(inbox.cars_pending, "vehicle")} waiting for approval`, href: "/admin/vehicles" });
-    if (inbox.owed_drivers > 0)
-      todo.push({ icon: "wallet", text: `You owe ${kes(inbox.owed_total)} to ${plural(inbox.owed_drivers, "driver")}`, href: "/admin/payouts" });
-    if (inbox.refunds_count > 0)
-      todo.push({ icon: "refund", text: `${plural(inbox.refunds_count, "refund")} to send, ${kes(inbox.refunds_amount)}`, href: "/admin/refunds" });
-    const plain = inbox.reports_open - inbox.reports_safety;
+    if (n0(inbox.payout_requests) > 0)
+      todo.push({ icon: "send", text: `${plural(inbox.payout_requests, "payout request")} waiting, ${kes(n0(inbox.payout_requests_amount))}`, href: "/admin/payouts" });
+    if (n0(inbox.refunds_count) > 0)
+      todo.push({ icon: "refund", text: `${plural(inbox.refunds_count, "refund")} to send, ${kes(n0(inbox.refunds_amount))}`, href: "/admin/refunds" });
+    const plain = n0(inbox.reports_open) - n0(inbox.reports_safety);
     if (plain > 0) todo.push({ icon: "flag", text: plural(plain, "open report"), href: "/admin/reports" });
-    if (inbox.stuck_payments > 0)
-      todo.push({ icon: "alert", text: `${plural(inbox.stuck_payments, "payment")} pending for over 15 minutes`, href: "/admin/bookings" });
+    if (n0(inbox.recon_issues) > 0)
+      todo.push({ icon: "alert", text: `${plural(inbox.recon_issues, "money check")} need a look`, href: "/admin/reconcile" });
   }
 
   const loadingMore = feed.limit !== limit;
@@ -112,10 +114,8 @@ export default function ActivityPage() {
   return (
     <main className="min-h-screen bg-gray-50 p-4 pb-28">
       <div className="max-w-2xl mx-auto space-y-5 text-gray-900">
-        <header>
-          <h1 className="text-2xl font-extrabold tracking-tight">Activity</h1>
-          <p className="text-sm text-gray-700">What needs you, and what came in and went out</p>
-        </header>
+        <PageHeader title="Activity" subtitle="What needs you, and what came in and went out" />
+        <AdminNav />
 
         <section className="space-y-2">
           <h2 className="text-xs font-bold uppercase tracking-wider text-gray-700">Needs your attention</h2>
@@ -142,7 +142,7 @@ export default function ActivityPage() {
             ))
           )}
           {inbox && todo.length > 0 && (
-            <p className="text-xs text-gray-700">{inboxTotal(inbox)} item{inboxTotal(inbox) === 1 ? "" : "s"} in total.</p>
+            <p className="text-xs text-gray-700">{plural(inboxTotal(inbox), "item")} in total.</p>
           )}
         </section>
 

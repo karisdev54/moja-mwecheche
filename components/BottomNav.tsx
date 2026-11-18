@@ -15,8 +15,9 @@ const USER_TABS: Tab[] = [
   { href: "/profile", label: "Profile", paths: PROFILE },
 ];
 
+// Admins only see this bar on their Profile page. Every other admin page has the fixed admin menu.
 const ADMIN_TABS: Tab[] = [
-  { href: "/admin", label: "Overview", paths: ["M4 4h7v7H4z", "M13 4h7v7h-7z", "M4 13h7v7H4z", "M13 13h7v7h-7z"] },
+  { href: "/admin", label: "Dashboard", paths: ["M4 4h7v7H4z", "M13 4h7v7h-7z", "M4 13h7v7H4z", "M13 13h7v7h-7z"] },
   { href: "/admin/live", label: "Live map", paths: ["M12 21s7-6.2 7-11a7 7 0 1 0-14 0c0 4.8 7 11 7 11z", "M12 12.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5z"] },
   { href: "/admin/notifications", label: "Activity", alerts: true, paths: ["M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9", "M13.7 21a2 2 0 0 1-3.4 0"] },
   { href: "/profile", label: "Profile", paths: PROFILE },
@@ -25,25 +26,29 @@ const ADMIN_TABS: Tab[] = [
 function NavBar({ tabs, pathname }: { tabs: Tab[]; pathname: string }) {
   const inbox = useInbox();
   const waiting = inbox ? inboxTotal(inbox) : 0;
-  const idx = Math.max(0, tabs.findIndex((t) => t.href === pathname));
+  const found = tabs.findIndex((t) => t.href === pathname);
+  const idx = Math.max(0, found);
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-30 glass border-t pb-[env(safe-area-inset-bottom)]">
+    <nav className="fixed bottom-0 left-0 right-0 z-30 glass border-t pb-[env(safe-area-inset-bottom)]" aria-label="Main">
       <div
         className="relative max-w-md mx-auto grid px-2 py-1"
         style={{ gridTemplateColumns: `repeat(${tabs.length}, minmax(0, 1fr))` }}
       >
-        <span
-          aria-hidden="true"
-          className="absolute top-1 bottom-1 rounded-2xl bg-indigo-100 transition-transform duration-300 ease-out"
-          style={{ left: 8, width: `calc((100% - 16px) / ${tabs.length})`, transform: `translateX(${idx * 100}%)` }}
-        />
+        {found >= 0 && (
+          <span
+            aria-hidden="true"
+            className="absolute top-1 bottom-1 rounded-2xl bg-indigo-100 transition-transform duration-300 ease-out"
+            style={{ left: 8, width: `calc((100% - 16px) / ${tabs.length})`, transform: `translateX(${idx * 100}%)` }}
+          />
+        )}
         {tabs.map((t) => {
           const active = pathname === t.href;
           return (
             <Link
               key={t.href}
               href={t.href}
+              aria-current={active ? "page" : undefined}
               className={`relative z-10 flex flex-col items-center gap-0.5 py-2 text-xs font-semibold active:scale-95 transition-transform ${
                 active ? "text-indigo-700" : "text-gray-700"
               }`}
@@ -59,6 +64,7 @@ function NavBar({ tabs, pathname }: { tabs: Tab[]; pathname: string }) {
                   strokeLinecap="round"
                   strokeLinejoin="round"
                   style={{ display: "block" }}
+                  aria-hidden="true"
                 >
                   {t.paths.map((d) => (
                     <path key={d} d={d} />
@@ -83,18 +89,13 @@ export default function BottomNav() {
   const pathname = usePathname();
   const role = useRole();
 
-  const adminHrefs = ADMIN_TABS.map((t) => t.href);
-  const userHrefs = USER_TABS.map((t) => t.href);
-
   let tabs: Tab[] | null = null;
   if (role === "admin") {
-    tabs = adminHrefs.includes(pathname) ? ADMIN_TABS : null;
+    tabs = pathname === "/profile" ? ADMIN_TABS : null;
   } else if (role) {
-    tabs = userHrefs.includes(pathname) ? USER_TABS : null;
-  } else if (pathname.startsWith("/admin")) {
-    tabs = adminHrefs.includes(pathname) ? ADMIN_TABS : null; // role still loading
+    tabs = USER_TABS.some((t) => t.href === pathname) ? USER_TABS : null;
   } else if (pathname === "/dashboard" || pathname === "/activity") {
-    tabs = USER_TABS;
+    tabs = USER_TABS; // the role is still loading: avoid a flash of no bar
   }
 
   if (!tabs) return null;

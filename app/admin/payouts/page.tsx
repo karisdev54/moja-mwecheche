@@ -8,6 +8,7 @@ import AdminTodo from "@/components/AdminTodo";
 import Avatar from "@/components/Avatar";
 import { Empty, Icon, Num, PageHeader, Pill, Stat, Tile } from "@/components/AdminUI";
 import { toast } from "@/lib/toast";
+import PayoutQueue from "@/components/PayoutQueue";
 
 type Balance = {
   driver_id: string;
@@ -17,6 +18,9 @@ type Balance = {
   paid_out: number;
   owed: number;
   avatar: string | null;
+  available?: number;
+  pending?: number;
+  requested?: number;
 };
 type Payout = {
   id: string;
@@ -85,6 +89,9 @@ async function fetchAll(): Promise<State> {
       earned: Number(b.earned),
       paid_out: Number(b.paid_out),
       owed: Number(b.owed),
+      available: Number((b as { available?: number }).available ?? 0),
+      pending: Number((b as { pending?: number }).pending ?? 0),
+      requested: Number((b as { requested?: number }).requested ?? 0),
       avatar: people.get(b.driver_id)?.avatar_url ?? null,
     })),
     payouts: payouts.map((p) => ({
@@ -216,6 +223,9 @@ export default function PayoutsPage() {
           </div>
         </section>
 
+        {/* Queue right under the hero card, before the stat tiles */}
+        <PayoutQueue onChanged={() => fetchAll().then(setState)} />
+
         <div className="grid grid-cols-3 gap-3">
           <Stat icon="user" color="#d97706" label="Drivers owed" value={owedDrivers} />
           <Stat icon="check" color="#059669" label="Paid out" value={totalPaid} prefix="KES " />
@@ -292,6 +302,11 @@ export default function PayoutsPage() {
                 <div className="h-1.5 rounded-full bg-indigo-100 overflow-hidden">
                   <div className="h-1.5 rounded-full" style={{ width: `${pct}%`, background: "#059669" }} />
                 </div>
+
+                {/* Hold-period note, directly under the progress bar */}
+                {(b.pending ?? 0) > 0 && (
+                  <p className="text-xs text-gray-700">{kes(b.pending ?? 0)} of this is still in the hold period.</p>
+                )}
 
                 {owes && openId !== b.driver_id && (
                   <button

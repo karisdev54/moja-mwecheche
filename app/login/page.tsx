@@ -69,10 +69,10 @@ type Errs = {
 // Turns Supabase's technical messages into plain language
 function friendly(m: string): string {
   const s = m.toLowerCase();
-  if (s.includes("invalid login")) return "Wrong email or password.";
+  if (s.includes("invalid login")) return "Wrong email or password. If you signed up with Google, tap Continue with Google, or choose Forgot password to create a password.";
   if (s.includes("email not confirmed")) return "Please confirm your email first. Check your inbox.";
   if (s.includes("already registered") || s.includes("already been registered"))
-    return "That email already has an account. Try logging in.";
+    return "That email already has an account. Try logging in, or use Continue with Google.";
   if (s.includes("database error saving"))
     return "We could not create your account. That phone number, email or number plate may already be registered.";
   if (s.includes("rate limit") || s.includes("too many") || s.includes("seconds"))
@@ -243,7 +243,7 @@ function LoginForm() {
 
     // With email confirmation on, an existing email comes back as "success" with no identities
     if (mode === "signup" && result.data.user && (result.data.user.identities?.length ?? 0) === 0) {
-      return setErr("email", "That email already has an account. Try logging in.");
+      return setErr("email", "That email already has an account. Try logging in, or use Continue with Google.");
     }
 
     if (mode === "signup" && !result.data.session) {

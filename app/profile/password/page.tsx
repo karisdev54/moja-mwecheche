@@ -8,7 +8,7 @@ import { Icon, PageHeader } from "@/components/AdminUI";
 
 export default function PasswordPage() {
   const router = useRouter();
-  const [email, setEmail] = useState<string | null>(null);
+  const [info, setInfo] = useState<{ email: string; hasPassword: boolean } | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -18,22 +18,27 @@ export default function PasswordPage() {
         router.replace("/login");
         return;
       }
-      const { data: p } = await supabase.from("profiles").select("role").eq("id", u.user.id).maybeSingle();
-      if (!active) return;
-      
-      setEmail(u.user.email ?? "");
+      const { data: has } = await supabase.rpc("my_has_password");
+      if (active) setInfo({ email: u.user.email ?? "", hasPassword: has !== false });
     })();
     return () => {
       active = false;
     };
   }, [router]);
 
-  if (email === null) return <Loader full />;
+  if (!info) return <Loader full />;
+
+  const creating = !info.hasPassword;
 
   return (
     <main className="min-h-screen bg-gray-50 p-4 pb-28">
       <div className="max-w-md mx-auto space-y-5 text-gray-900 stagger">
-        <PageHeader title="Change password" subtitle="Keep your account safe" href="/profile" />
+        <PageHeader
+          title={creating ? "Create a password" : "Change password"}
+          subtitle={creating ? "Log in with email as well as Google" : "Keep your account safe"}
+          href="/profile"
+          back="Profile"
+        />
 
         <section
           className="relative overflow-hidden rounded-3xl p-5 text-white shadow-xl sheen flex items-center gap-4"
@@ -43,12 +48,14 @@ export default function PasswordPage() {
             <Icon name="shield" className="w-6 h-6" />
           </span>
           <div>
-            <p className="font-extrabold text-lg leading-tight">Protect your account</p>
-            <p className="text-sm text-white/85">Choose a strong password you do not use anywhere else.</p>
+            <p className="font-extrabold text-lg leading-tight">{creating ? "Add a second way in" : "Protect your account"}</p>
+            <p className="text-sm text-white/85">
+              {creating ? "A password means you are never locked out if Google has a problem." : "Choose a strong password you do not use anywhere else."}
+            </p>
           </div>
         </section>
 
-        <PasswordChange email={email} />
+        <PasswordChange email={info.email} hasPassword={info.hasPassword} />
       </div>
     </main>
   );

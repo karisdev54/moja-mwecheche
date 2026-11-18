@@ -22,7 +22,6 @@ function rules(pw: string, email: string): Check[] {
   ];
 }
 
-// 0 to 4: used only for the coloured bar
 function strength(pw: string): number {
   let s = 0;
   if (pw.length >= 8) s++;
@@ -82,10 +81,7 @@ function Switch({
         <span className="block text-sm font-semibold">{label}</span>
         {sub && <span className="block text-xs text-gray-700">{sub}</span>}
       </span>
-      <span
-        className="relative w-11 h-6 rounded-full transition-colors shrink-0"
-        style={{ background: on ? "#4338ca" : "#9ca3af" }}
-      >
+      <span className="relative w-11 h-6 rounded-full transition-colors shrink-0" style={{ background: on ? "#4338ca" : "#9ca3af" }}>
         <span
           className="absolute top-0.5 left-0.5 w-5 h-5 rounded-full shadow transition-transform"
           style={{ background: "#ffffff", transform: on ? "translateX(20px)" : "translateX(0)" }}
@@ -95,61 +91,89 @@ function Switch({
   );
 }
 
-export default function PasswordChange({ email }: { email: string }) {
+export default function PasswordChange({ email, hasPassword = true }: { email: string; hasPassword?: boolean }) {
   const [current, setCurrent] = useState("");
   const [next, setNext] = useState("");
   const [again, setAgain] = useState("");
   const [show, setShow] = useState(false);
   const [others, setOthers] = useState(true);
   const [busy, setBusy] = useState(false);
+  const [done, setDone] = useState(false);
   const [msg, setMsg] = useState("");
 
   const checks = rules(next, email);
   const score = next ? strength(next) : 0;
+  const creating = !hasPassword && !done; // a Google account setting its first password
 
   const submit = async () => {
     if (busy) return;
     setMsg("");
 
-    if (!current) return setMsg("Enter your current password.");
+    if (!creating && !current) return setMsg("Enter your current password.");
     if (checks.some((c) => !c.ok)) return setMsg("The new password does not meet the rules below.");
-    if (next === current) return setMsg("The new password must be different from the current one.");
+    if (!creating && next === current) return setMsg("The new password must be different from the current one.");
     if (next !== again) return setMsg("The two new passwords do not match.");
 
     setBusy(true);
 
-    // Step 1: prove the person knows the current password
-    const verify = await supabase.auth.signInWithPassword({ email, password: current });
-    if (verify.error) {
-      setBusy(false);
-      const tooMany = /rate|too many/i.test(verify.error.message);
-      return setMsg(
-        tooMany ? "Too many attempts. Please wait a few minutes and try again." : "Your current password is wrong."
-      );
+    // Accounts that already have a password must prove they know it
+    if (!creating) {
+      const verify = await supabase.auth.signInWithPassword({ email, password: current });
+      if (verify.error) {
+        setBusy(false);
+        const tooMany = /rate|too many/i.test(verify.error.message);
+        return setMsg(tooMany ? "Too many attempts. Please wait a few minutes and try again." : "Your current password is wrong.");
+      }
     }
 
-    // Step 2: change it
     const { error } = await supabase.auth.updateUser({ password: next });
     if (error) {
       setBusy(false);
-      return setMsg(error.message);
+      return setMsg(
+        /reauth|recent|nonce/i.test(error.message)
+          ? "For your safety, log out, sign in again with Google, and then try once more."
+          : error.message
+      );
     }
 
-    // Step 3: sign out every other device, keep this one
     if (others) await supabase.auth.signOut({ scope: "others" });
 
     setBusy(false);
     setCurrent("");
     setNext("");
     setAgain("");
-    toast(others ? "Password changed. Other devices were signed out." : "Password changed", { tone: "ok", ms: 4000 });
+    if (creating) setDone(true);
+    toast(
+      creating
+        ? "Password created. You can now log in with your email and password."
+        : others
+          ? "Password changed. Other devices were signed out."
+          : "Password changed",
+      { tone: "ok", ms: 4500 }
+    );
   };
 
   return (
     <div className="space-y-4">
+      {creating && (
+        <section className="bg-white rounded-2xl shadow p-4 flex items-start gap-3">
+          <span className="text-indigo-600 mt-0.5">
+            <Icon name="info" className="w-5 h-5" />
+          </span>
+          <div className="text-sm space-y-1">
+            <p className="font-bold">You signed in with Google</p>
+            <p className="text-gray-800">
+              Your account has no password yet, and your Google password is never shared with us. Create one here to log in with {email} as well as with Google.
+            </p>
+          </div>
+        </section>
+      )}
+
       <section className="bg-white rounded-2xl shadow p-4 space-y-3">
-        <Field value={current} onChange={setCurrent} placeholder="Current password" show={show} auto="current-password" />
-        <Field value={next} onChange={setNext} placeholder="New password" show={show} auto="new-password" />
+        {!creating && (
+          <Field value={current} onChange={setCurrent} placeholder="Current password" show={show} auto="current-password" />
+        )}
+        <Field value={next} onChange={setNext} placeholder={creating ? "Choose a password" : "New password"} show={show} auto="new-password" />
 
         {next && (
           <div className="slide-in space-y-2">
@@ -168,11 +192,7 @@ export default function PasswordChange({ email }: { email: string }) {
                 <li key={c.label} className="flex items-center gap-2 text-sm" style={{ opacity: c.ok ? 1 : 0.75 }}>
                   <span
                     className="w-5 h-5 rounded-full flex items-center justify-center shrink-0 border-2"
-                    style={{
-                      background: c.ok ? "#16a34a" : "transparent",
-                      borderColor: c.ok ? "#16a34a" : "#9ca3af",
-                      color: "#ffffff",
-                    }}
+                    style={{ background: c.ok ? "#16a34a" : "transparent", borderColor: c.ok ? "#16a34a" : "#9ca3af", color: "#ffffff" }}
                   >
                     {c.ok && (
                       <span key="ok" className="pop-check">
@@ -187,10 +207,8 @@ export default function PasswordChange({ email }: { email: string }) {
           </div>
         )}
 
-        <Field value={again} onChange={setAgain} placeholder="Repeat new password" show={show} auto="new-password" />
-        {again && next !== again && (
-          <p className="slide-in text-xs font-semibold text-red-600">The passwords do not match yet.</p>
-        )}
+        <Field value={again} onChange={setAgain} placeholder="Repeat the password" show={show} auto="new-password" />
+        {again && next !== again && <p className="slide-in text-xs font-semibold text-red-600">The passwords do not match yet.</p>}
       </section>
 
       <section className="bg-white rounded-2xl shadow p-4 space-y-4">
@@ -199,10 +217,7 @@ export default function PasswordChange({ email }: { email: string }) {
       </section>
 
       {msg && (
-        <p
-          className="slide-in flex items-start gap-2 rounded-2xl bg-white shadow p-3 text-sm font-semibold text-red-700"
-          style={{ borderLeft: "4px solid #dc2626" }}
-        >
+        <p className="slide-in flex items-start gap-2 rounded-2xl bg-white shadow p-3 text-sm font-semibold text-red-700" style={{ borderLeft: "4px solid #dc2626" }}>
           <Icon name="alert" className="w-4 h-4 mt-0.5" />
           {msg}
         </p>
@@ -214,12 +229,8 @@ export default function PasswordChange({ email }: { email: string }) {
         className="btn-shine grad-bg w-full text-white font-bold rounded-2xl p-4 shadow-xl active:scale-[0.98] disabled:opacity-60 flex items-center justify-center gap-2"
       >
         {busy && <span className="w-4 h-4 rounded-full border-2 border-white/40 border-t-white animate-spin" />}
-        {busy ? "Checking..." : "Update password"}
+        {busy ? "Saving..." : creating ? "Create password" : "Update password"}
       </button>
-
-      <p className="text-xs text-gray-700 text-center">
-        Signed up with Google? Use Forgot password on the login page to create a password.
-      </p>
     </div>
   );
 }

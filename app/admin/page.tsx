@@ -4,9 +4,9 @@ import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 import Loader from "@/components/Loader";
 import Badge from "@/components/Badge";
-import { useInbox } from "@/lib/inbox";
-import { Icon, Num, Tile, PageHeader } from "@/components/AdminUI";
 import AdminNav from "@/components/AdminNav";
+import { useInbox } from "@/lib/inbox";
+import { Icon, Num, Tile } from "@/components/AdminUI";
 
 type Daily = { day: string; bookings: number; revenue: number };
 type Stats = {
@@ -22,7 +22,8 @@ type Stats = {
 type State = { allowed: boolean; stats: Stats | null };
 
 const kes = (n: number) => `KES ${Math.round(Number(n)).toLocaleString()}`;
-
+const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? "" : "s"}`;
+const n0 = (v: number | undefined) => v ?? 0;
 
 /* ---------- Revenue chart that draws itself ---------- */
 function AreaChart({ values, first, last }: { values: number[]; first: string; last: string }) {
@@ -180,19 +181,20 @@ export default function AdminHome() {
 
   const todo: { icon: string; text: string; href: string; urgent?: boolean }[] = [];
   if (inbox) {
-    if (inbox.reports_safety > 0)
-      todo.push({ icon: "alert", text: `${inbox.reports_safety} safety report${inbox.reports_safety > 1 ? "s" : ""} need you now`, href: "/admin/reports", urgent: true });
-    if (inbox.drivers_pending > 0)
-      todo.push({ icon: "verify", text: `${inbox.drivers_pending} driver${inbox.drivers_pending > 1 ? "s" : ""} waiting for verification`, href: "/admin/verification" });
-    if (inbox.owed_drivers > 0)
-      todo.push({ icon: "wallet", text: `You owe ${kes(inbox.owed_total)} to ${inbox.owed_drivers} driver${inbox.owed_drivers > 1 ? "s" : ""}`, href: "/admin/payouts" });
-    if (inbox.refunds_count > 0)
-      todo.push({ icon: "refund", text: `${inbox.refunds_count} refund${inbox.refunds_count > 1 ? "s" : ""} to send, ${kes(inbox.refunds_amount)}`, href: "/admin/refunds" });
-    const plain = inbox.reports_open - inbox.reports_safety;
-    if (plain > 0)
-      todo.push({ icon: "flag", text: `${plain} open report${plain > 1 ? "s" : ""}`, href: "/admin/reports" });
-        if (inbox.cars_pending > 0)
-      todo.push({ icon: "car", text: `${inbox.cars_pending} vehicle${inbox.cars_pending > 1 ? "s" : ""} waiting for approval`, href: "/admin/vehicles" });
+    if (n0(inbox.reports_safety) > 0)
+      todo.push({ icon: "alert", text: `${plural(inbox.reports_safety, "safety report")} need you now`, href: "/admin/reports", urgent: true });
+    if (n0(inbox.drivers_pending) > 0)
+      todo.push({ icon: "verify", text: `${plural(inbox.drivers_pending, "driver")} waiting for verification`, href: "/admin/verification" });
+    if (n0(inbox.cars_pending) > 0)
+      todo.push({ icon: "car", text: `${plural(inbox.cars_pending, "vehicle")} waiting for approval`, href: "/admin/vehicles" });
+    if (n0(inbox.payout_requests) > 0)
+      todo.push({ icon: "send", text: `${plural(inbox.payout_requests, "payout request")} waiting, ${kes(n0(inbox.payout_requests_amount))}`, href: "/admin/payouts" });
+    if (n0(inbox.refunds_count) > 0)
+      todo.push({ icon: "refund", text: `${plural(inbox.refunds_count, "refund")} to send, ${kes(n0(inbox.refunds_amount))}`, href: "/admin/refunds" });
+    const plain = n0(inbox.reports_open) - n0(inbox.reports_safety);
+    if (plain > 0) todo.push({ icon: "flag", text: plural(plain, "open report"), href: "/admin/reports" });
+    if (n0(inbox.recon_issues) > 0)
+      todo.push({ icon: "alert", text: `${plural(inbox.recon_issues, "money check")} need a look`, href: "/admin/reconcile" });
   }
 
   const groups: {
@@ -203,17 +205,18 @@ export default function AdminHome() {
       title: "Operations",
       items: [
         { href: "/admin/verification", icon: "verify", title: "Verify drivers", sub: "Review documents", color: "#6366f1", n: inbox?.drivers_pending },
-        { href: "/admin/users", icon: "users", title: "Users", sub: "Search and suspend accounts", color: "#0ea5e9" },
-        { href: "/admin/bookings", icon: "car", title: "Bookings", sub: "Every booking, with filters", color: "#10b981" },
         { href: "/admin/vehicles", icon: "car", title: "Vehicles", sub: "Approve logbooks and plates", color: "#0ea5e9", n: inbox?.cars_pending },
-        { href: "/admin/live", icon: "pin", title: "Live map", sub: "Drivers, requests and trips now", color: "#10b981" },
+        { href: "/admin/users", icon: "users", title: "Users", sub: "Search and suspend accounts", color: "#8b5cf6" },
+        { href: "/admin/bookings", icon: "list", title: "Bookings", sub: "Every booking, with filters", color: "#10b981" },
+        { href: "/admin/live", icon: "pin", title: "Live map", sub: "Drivers, requests and trips now", color: "#14b8a6" },
       ],
     },
     {
       title: "Money",
       items: [
-        { href: "/admin/payouts", icon: "wallet", title: "Payouts", sub: "What you owe drivers", color: "#f59e0b", n: inbox?.owed_drivers },
+        { href: "/admin/payouts", icon: "wallet", title: "Payouts", sub: "Pay driver requests", color: "#f59e0b", n: inbox?.payout_requests },
         { href: "/admin/refunds", icon: "refund", title: "Refunds", sub: "Send money back", color: "#f43f5e", n: inbox?.refunds_count },
+        { href: "/admin/reconcile", icon: "check", title: "Money check", sub: "Does the money add up?", color: "#059669", n: inbox?.recon_issues },
         { href: "/admin/stats", icon: "chart", title: "Overview", sub: "Revenue and trends", color: "#8b5cf6" },
       ],
     },
@@ -230,8 +233,21 @@ export default function AdminHome() {
   return (
     <main className="min-h-screen bg-gray-50 p-4 pb-28">
       <div className="max-w-2xl mx-auto space-y-6 text-gray-900 stagger">
-        <PageHeader title="Live Map" subtitle="brief and overview" href="/admin/live" />
-                <AdminNav />
+        <header className="flex items-start justify-between gap-3">
+          <div>
+            <h1 className="text-2xl font-extrabold tracking-tight">Dashboard</h1>
+            <p className="text-sm text-gray-700">Platform overview</p>
+          </div>
+          <Link
+            href="/admin/live"
+            className="shrink-0 inline-flex items-center gap-1.5 bg-white rounded-full shadow px-4 py-2 text-sm font-semibold active:scale-95"
+          >
+            <Icon name="pin" className="w-4 h-4" />
+            Live map
+          </Link>
+        </header>
+
+        <AdminNav />
 
         <section
           className="relative overflow-hidden rounded-3xl p-5 text-white shadow-xl sheen"

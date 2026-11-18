@@ -14,6 +14,7 @@ type LL = [number, number];
 
 const styleFor = (theme: string) =>
   theme === "dark" ? "mapbox://styles/mapbox/dark-v11" : "mapbox://styles/mapbox/streets-v12";
+
 type Driver = {
   id: string;
   lat: number | null;
@@ -21,6 +22,8 @@ type Driver = {
   is_available: boolean;
   location_updated_at: string | null;
 };
+
+export type MapPin = { id: string; lng: number; lat: number; color: string };
 
 function metersBetween(a: LL, b: LL): number {
   const k = 111320;
@@ -65,19 +68,32 @@ function meEl(): HTMLElement {
   return el;
 }
 
+// The pin body takes the colour, with a white dot in the middle
 function pinEl(color = "#f59e0b"): HTMLElement {
   const el = document.createElement("div");
   el.style.width = "30px";
   el.style.height = "40px";
   el.innerHTML = `
     <svg viewBox="0 0 24 32" width="30" height="40" aria-hidden="true">
-      <path d="M12 0C5.4 0 0 5.4 0 12c0 9 12 20 12 20s12-11 12-20C24 5.4 18.6 0 12 0z" fill="#f59e0b" stroke="#fff" stroke-width="1.5"/>
-      <circle cx="12" cy="12" r="4.5" fill="${color}"/>
+      <path d="M12 0C5.4 0 0 5.4 0 12c0 9 12 20 12 20s12-11 12-20C24 5.4 18.6 0 12 0z" fill="${color}" stroke="#fff" stroke-width="1.5"/>
+      <circle cx="12" cy="12" r="4.5" fill="#fff"/>
     </svg>`;
   return el;
 }
 
-export type MapPin = { id: string; lng: number; lat: number; color: string };
+// Zooms so every pin is visible, leaving room for a panel at the bottom
+function fitPins(m: mapboxgl.Map, markers: mapboxgl.Marker[]) {
+  if (markers.length === 0) return;
+  const first = markers[0].getLngLat();
+  const bounds = new mapboxgl.LngLatBounds(first, first);
+  markers.forEach((mk) => bounds.extend(mk.getLngLat()));
+  const h = m.getContainer().clientHeight;
+  m.fitBounds(bounds, {
+    padding: { top: 80, bottom: Math.min(300, Math.round(h * 0.45)), left: 40, right: 40 },
+    maxZoom: 15,
+    duration: 800,
+  });
+}
 
 export default function DriverMap({
   assignedDriverId = null,
@@ -92,7 +108,7 @@ export default function DriverMap({
   showCount?: boolean;
   pins?: MapPin[] | null;
   focus?: { lng: number; lat: number } | null;
-  overview?: boolean;
+  overview?: boolean; // the admin live map: no location sharing, zooms to the pins
 }) {
   const container = useRef<HTMLDivElement>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
@@ -102,12 +118,18 @@ export default function DriverMap({
   const routeRef = useRef<RouteView | null>(route);
   const redrawRef = useRef<() => void>(() => {});
   const drawRouteRef = useRef<() => void>(() => {});
-  const [count, setCount] = useState(0);
   const pinRef = useRef<Record<string, mapboxgl.Marker>>({});
+  const pinsFitted = useRef(false);
   const overviewRef = useRef(overview);
+  const [count, setCount] = useState(0);
+  const [locOff, setLocOff] = useState(false);
 
   // Hooks must be called here, at the top of the component, never inside an effect
   const theme = useTheme();
+
+  useEffect(() => {
+    overviewRef.current = overview;
+  }, [overview]);
 
   useEffect(() => {
     if (!container.current) return;
@@ -141,6 +163,10 @@ export default function DriverMap({
       zoom: overviewRef.current ? 11 : 14,
     });
     mapRef.current = map;
+
+    // The menu on the admin pages opens and closes, so the map must follow its box
+    const ro = new ResizeObserver(() => map.resize());
+    ro.observe(container.current);
 
     // One animation loop moves every gliding car, and stops when nothing is moving
     const tick = (t: number) => {
@@ -252,21 +278,29 @@ export default function DriverMap({
       setCount(Object.keys(latest).length);
     };
 
-    const watchId = navigator.geolocation.watchPosition(
-      (pos) => {
-        if (cancelled) return;
-        const ll: LL = [pos.coords.longitude, pos.coords.latitude];
-        meRef.current = ll;
-        if (!markers["me"]) {
-          markers["me"] = new mapboxgl.Marker({ element: meEl() }).setLngLat(ll).addTo(map);
-                    if (!routeRef.current && !overviewRef.current) map.flyTo({ center: ll, zoom: 16 });
-        } else {
-          markers["me"].setLngLat(ll);
-        }
-      },
-      (err) => console.error(err),
-      { enableHighAccuracy: true }
-    );
+    // The admin live map never asks for the admin's own location
+    let watchId: number | null = null;
+    if (!overviewRef.current) {
+      watchId = navigator.geolocation.watchPosition(
+        (pos) => {
+          if (cancelled) return;
+          setLocOff(false);
+          const ll: LL = [pos.coords.longitude, pos.coords.latitude];
+          meRef.current = ll;
+          if (!markers["me"]) {
+            markers["me"] = new mapboxgl.Marker({ element: meEl() }).setLngLat(ll).addTo(map);
+            if (!routeRef.current) map.flyTo({ center: ll, zoom: 16 });
+          } else {
+            markers["me"].setLngLat(ll);
+          }
+        },
+        (err) => {
+          // Only "permission denied" is worth telling the person about
+          if (!cancelled && err.code === err.PERMISSION_DENIED) setLocOff(true);
+        },
+        { enableHighAccuracy: true, maximumAge: 10000 }
+      );
+    }
 
     const draw = (d: Driver) => {
       if (cancelled || d.lat === null || d.lng === null) return;
@@ -364,12 +398,14 @@ export default function DriverMap({
       if (raf) cancelAnimationFrame(raf);
       redrawRef.current = () => {};
       drawRouteRef.current = () => {};
-      navigator.geolocation.clearWatch(watchId);
+      if (watchId !== null) navigator.geolocation.clearWatch(watchId);
       clearInterval(sweep);
       supabase.removeChannel(channel);
+      ro.disconnect();
       destMarker?.remove();
       Object.keys(markers).forEach((id) => markers[id].remove());
       pinRef.current = {};
+      pinsFitted.current = false;
       mapRef.current = null;
       map.remove();
     };
@@ -386,12 +422,23 @@ export default function DriverMap({
   }, [route]);
 
   // Switch the map between light and dark when the theme changes
-    // Pins for jobs (used by the admin live map)
+  useEffect(() => {
+    const m = mapRef.current;
+    const next = styleFor(theme);
+    if (!m || styleRef.current === next) return;
+    styleRef.current = next;
+    m.setStyle(next);
+    // A new style wipes the route layers, so draw them again once it has loaded
+    m.once("style.load", () => drawRouteRef.current());
+  }, [theme]);
+
+  // Pins for jobs (the admin live map)
   useEffect(() => {
     const m = mapRef.current;
     if (!m) return;
     const have = pinRef.current;
     const next = new Map((pins ?? []).map((p) => [p.id, p]));
+
     Object.keys(have).forEach((id) => {
       if (!next.has(id)) {
         have[id].remove();
@@ -402,13 +449,25 @@ export default function DriverMap({
       if (have[id]) have[id].setLngLat([p.lng, p.lat]);
       else have[id] = new mapboxgl.Marker({ element: pinEl(p.color), anchor: "bottom" }).setLngLat([p.lng, p.lat]).addTo(m);
     });
+
+    // The first time pins arrive, zoom so all of them are visible
+    if (overviewRef.current && !pinsFitted.current && next.size > 0) {
+      pinsFitted.current = true;
+      fitPins(m, Object.values(have));
+    }
   }, [pins]);
 
-  // Fly to a job the admin tapped
+  // Fly to a job the admin tapped, leaving room for the panel at the bottom
   useEffect(() => {
     const m = mapRef.current;
     if (!m || !focus) return;
-    m.flyTo({ center: [focus.lng, focus.lat], zoom: 16, duration: 900 });
+    const h = m.getContainer().clientHeight;
+    m.flyTo({
+      center: [focus.lng, focus.lat],
+      zoom: 16,
+      duration: 900,
+      padding: overviewRef.current ? { bottom: Math.min(260, Math.round(h * 0.4)), top: 0, left: 0, right: 0 } : undefined,
+    });
   }, [focus]);
 
   const locate = () => {
@@ -416,10 +475,23 @@ export default function DriverMap({
     if (!m) return;
     const go = (ll: LL) => m.flyTo({ center: ll, zoom: Math.max(m.getZoom(), 16), duration: 900 });
     if (meRef.current) return go(meRef.current);
-    navigator.geolocation.getCurrentPosition((p) => go([p.coords.longitude, p.coords.latitude]));
+    navigator.geolocation.getCurrentPosition(
+      (p) => {
+        setLocOff(false);
+        go([p.coords.longitude, p.coords.latitude]);
+      },
+      (err) => {
+        if (err.code === err.PERMISSION_DENIED) setLocOff(true);
+      }
+    );
   };
 
-    return (
+  const showAll = () => {
+    const m = mapRef.current;
+    if (m) fitPins(m, Object.values(pinRef.current));
+  };
+
+  return (
     <div className="relative h-full w-full">
       <div ref={container} className="h-full w-full" />
 
@@ -435,14 +507,37 @@ export default function DriverMap({
               {count === 0 ? "None online" : `${count} online`}
             </div>
           )}
-          <button
-            onClick={locate}
-            aria-label="Centre the map on my location"
-            className="w-11 h-11 rounded-full bg-white shadow-lg flex items-center justify-center text-indigo-700 active:scale-90 transition-transform"
-          >
-            <Icon name="locate" className="w-5 h-5" />
-          </button>
+          {overview ? (
+            <button
+              onClick={showAll}
+              aria-label="Show all jobs on the map"
+              title="Show all jobs"
+              className="w-11 h-11 rounded-full bg-white shadow-lg flex items-center justify-center text-indigo-700 active:scale-90 transition-transform"
+            >
+              <Icon name="pin" className="w-5 h-5" />
+            </button>
+          ) : (
+            <button
+              onClick={locate}
+              aria-label="Centre the map on my location"
+              className="w-11 h-11 rounded-full bg-white shadow-lg flex items-center justify-center text-indigo-700 active:scale-90 transition-transform"
+            >
+              <Icon name="locate" className="w-5 h-5" />
+            </button>
+          )}
         </div>
+      )}
+
+      {locOff && !overview && !route?.follow && (
+        <button
+          onClick={locate}
+          className="absolute left-3 top-[calc(max(0.75rem,env(safe-area-inset-top))+3.75rem)] z-10 max-w-[75vw] flex items-center gap-2 rounded-2xl bg-white shadow-lg px-3 py-2 text-left text-xs font-semibold text-gray-900 active:scale-95 transition-transform"
+        >
+          <span className="text-amber-500 shrink-0">
+            <Icon name="locate" className="w-4 h-4" />
+          </span>
+          Location is off. Allow it in your browser settings, then tap here.
+        </button>
       )}
     </div>
   );

@@ -4,11 +4,12 @@ import { supabase } from "@/lib/supabase";
 import PlaceSearch from "@/components/PlaceSearch";
 import MapPicker from "@/components/MapPicker";
 import PlateBadge from "@/components/PlateBadge";
-import { fmtMinutes, getRoute, type LngLat, type Place, type RouteView } from "@/lib/mapbox";
 import JobTracker from "@/components/JobTracker";
-import { alertDialog, confirmDialog, promptDialog } from "@/lib/dialog";
+import SafetyButton from "@/components/SafetyButton";
+import { fmtMinutes, getRoute, type LngLat, type Place, type RouteView } from "@/lib/mapbox";
+import { alertDialog, confirmDialog } from "@/lib/dialog";
+import { friendlyError } from "@/lib/net";
 import { Icon, PersonRow } from "@/components/AdminUI";
-
 
 const TASKS = ["Airport transfer", "Wedding / event", "Business trip", "Errand / delivery", "Other"];
 
@@ -52,6 +53,7 @@ type Booking = {
   vehicle: string;
   driver_note: string | null;
   timing: string;
+  pin?: string | null;
 };
 
 const pad = (n: number) => String(n).padStart(2, "0");
@@ -63,6 +65,13 @@ const nowMs = () => Date.now();
 const nowIso = () => new Date(nowMs()).toISOString();
 const minLaterInput = () => toLocalInput(new Date(nowMs() + 60 * 60 * 1000));
 const isTooSoon = (iso: string) => new Date(iso).getTime() < nowMs() + 55 * 60 * 1000;
+const cancelFeeFor = (
+  b: { paid: boolean; driver_id: string | null; scheduled_at: string; price: number },
+  p: { cancel_fee: number; cancel_free_hours: number }
+) =>
+  b.paid && b.driver_id && nowMs() > new Date(b.scheduled_at).getTime() - p.cancel_free_hours * 3600000
+    ? Math.min(p.cancel_fee, b.price)
+    : 0;
 
 // Shows a message, then clears it
 function flash(set: (v: string) => void, text: string, ms = 6000) {
@@ -79,7 +88,18 @@ async function fetchMyBookings(userId: string): Promise<Booking[]> {
     .eq("customer_id", userId)
     .order("created_at", { ascending: false })
     .limit(8);
-  return (data ?? []) as unknown as Booking[];
+  const rows = (data ?? []) as unknown as Booking[];
+
+  // The start code is only fetched for paid trips that have not started yet
+  const need = rows.filter((r) => r.paid && (r.status === "accepted" || r.status === "in_progress")).map((r) => r.id);
+  if (need.length > 0) {
+    const { data: p } = await supabase.from("booking_pins").select("booking_id,pin").in("booking_id", need);
+    const m = new Map(((p ?? []) as { booking_id: string; pin: string }[]).map((x) => [x.booking_id, x.pin]));
+    rows.forEach((r) => {
+      r.pin = m.get(r.id) ?? null;
+    });
+  }
+  return rows;
 }
 
 const FIELD =
@@ -190,8 +210,8 @@ export default function CustomerPanel({
   const [payingId, setPayingId] = useState<string | null>(null);
   const [payMsg, setPayMsg] = useState("");
   const [nearby, setNearby] = useState<number | null>(null);
+  const [pricing, setPricing] = useState({ per_km: 25, min_fare: 0, cancel_fee: 100, cancel_free_hours: 2 });
 
-  const [pricing, setPricing] = useState({ per_km: 25, min_fare: 0 });
   const estimate = routeInfo ? Math.max(Math.round(routeInfo.km * pricing.per_km), pricing.min_fare) : 0;
 
   const cbRef = useRef(onAssignedChange);
@@ -235,18 +255,25 @@ export default function CustomerPanel({
     };
   }, [userId, apply]);
 
-  // Fetch pricing (per_km and min_fare) from the database
+  // Prices and the cancellation policy come from the database
   useEffect(() => {
     let active = true;
     supabase.rpc("get_pricing").then(({ data }) => {
-      if (active && data) setPricing({ per_km: Number(data.per_km), min_fare: Number(data.min_fare) });
+      if (active && data) {
+        setPricing({
+          per_km: Number(data.per_km),
+          min_fare: Number(data.min_fare),
+          cancel_fee: Number(data.cancel_fee ?? 100),
+          cancel_free_hours: Number(data.cancel_free_hours ?? 2),
+        });
+      }
     });
     return () => {
       active = false;
     };
   }, []);
 
-  // Does this customer own a car? (set when registering, changed in Profile, My car)
+  // Does this customer own a verified car? (set at registration, managed in Profile, My vehicle)
   useEffect(() => {
     let active = true;
     supabase
@@ -255,10 +282,9 @@ export default function CustomerPanel({
       .eq("id", userId)
       .maybeSingle()
       .then(({ data }) => {
-        if (active) {
-          setHasCar(data?.has_car ?? null);
-          setCarOk(data?.car_status === "approved");
-        }
+        if (!active) return;
+        setHasCar(data?.has_car ?? null);
+        setCarOk(data?.car_status === "approved");
       });
     return () => {
       active = false;
@@ -353,8 +379,8 @@ export default function CustomerPanel({
         return setMsg("Later bookings must be at least 1 hour from now. Choose Now for an immediate request.");
       }
     }
-    if (!routeInfo) return setMsg("Wait for the route and price to appear, then try again.");
     if (!destCoords) return setMsg("Choose where you are going. Pick a suggestion or use the map.");
+    if (!routeInfo) return setMsg("Wait for the route and price to appear, then try again.");
 
     sendingRef.current = true;
     setSending(true);
@@ -378,21 +404,18 @@ export default function CustomerPanel({
           destination: destination.trim() || null,
           dest_lat: destCoords[1],
           dest_lng: destCoords[0],
-          route_km: routeInfo?.km ?? null,
-          route_min: routeInfo?.minutes ?? null,
+          route_km: routeInfo.km,
+          route_min: routeInfo.minutes,
           price: estimate, // preview only, the database sets the real price
         });
         finish();
         if (error) {
-          flash(setMsg, error.message);
+          flash(setMsg, friendlyError(error.message));
           return;
         }
         setOpen(false);
         resetForm();
-        flash(
-          setNotice,
-          timing === "now" ? "Request sent ✓ Looking for a driver" : "Booking sent ✓ Drivers can accept it now"
-        );
+        flash(setNotice, timing === "now" ? "Request sent. Looking for a driver." : "Booking sent. Drivers can accept it now.");
         reload();
       },
       () => {
@@ -403,12 +426,16 @@ export default function CustomerPanel({
     );
   };
 
-  const cancel = async (id: string, paid: boolean) => {
+  const cancel = async (b: Booking) => {
+    const fee = cancelFeeFor(b, pricing);
     const ok = await confirmDialog(
-      paid
+      b.paid
         ? {
-            title: "Cancel and request a refund?",
-            message: "Your driver will be told, and we will send your money back to M-Pesa.",
+            title: fee > 0 ? "Cancel with a fee?" : "Cancel and request a refund?",
+            message:
+              fee > 0
+                ? `Your driver is already committed to this trip, so a cancellation fee of KES ${fee} applies. You will be refunded KES ${Math.max(b.price - fee, 0)} to M-Pesa.`
+                : "Your driver will be told, and we will send your money back to M-Pesa.",
             confirmText: "Cancel booking",
             cancelText: "Keep booking",
             danger: true,
@@ -416,13 +443,22 @@ export default function CustomerPanel({
         : { title: "Cancel this request?", confirmText: "Cancel request", cancelText: "Keep it", danger: true }
     );
     if (!ok) return;
-    await supabase.from("bookings").update({ status: "cancelled" }).eq("id", id);
+
+    const { error } = await supabase.from("bookings").update({ status: "cancelled" }).eq("id", b.id);
+    if (error) {
+      await alertDialog({ title: "Could not cancel", message: friendlyError(error.message) });
+      return;
+    }
     reload();
   };
 
   // Removes an expired request completely
   const remove = async (id: string) => {
-    await supabase.from("bookings").delete().eq("id", id);
+    const { error } = await supabase.from("bookings").delete().eq("id", id);
+    if (error) {
+      await alertDialog({ title: "Could not remove", message: friendlyError(error.message) });
+      return;
+    }
     reload();
   };
 
@@ -459,7 +495,7 @@ export default function CustomerPanel({
 
         if (vj.state === "success") {
           setPayPhone("");
-          flash(setPayMsg, "Payment received ✓");
+          flash(setPayMsg, "Payment received.");
           reload();
           setPayingId(null);
           return;
@@ -472,7 +508,7 @@ export default function CustomerPanel({
       }
       flash(setPayMsg, "Still waiting. If you already paid, the booking will update shortly.", 10000);
     } catch {
-      flash(setPayMsg, "Network error. Please try again.");
+      flash(setPayMsg, "Network error. Check your internet connection and try again.");
     }
     setPayingId(null);
   };
@@ -496,9 +532,7 @@ export default function CustomerPanel({
 
   // Home only shows live jobs, plus the newest expired one so "Request again" stays handy
   const newestId = bookings[0]?.id;
-  const onHome = bookings.filter(
-    (b) => ACTIVE.includes(b.status) || (b.status === "expired" && b.id === newestId)
-  );
+  const onHome = bookings.filter((b) => ACTIVE.includes(b.status) || (b.status === "expired" && b.id === newestId));
 
   return (
     <div className="space-y-4 text-gray-900">
@@ -524,10 +558,7 @@ export default function CustomerPanel({
           <Icon name="chevron" className="w-5 h-5" />
         </button>
       ) : (
-        <fieldset
-          disabled={sending}
-          className="min-w-0 space-y-5 rounded-2xl border border-indigo-100 bg-white p-4 shadow"
-        >
+        <fieldset disabled={sending} className="min-w-0 space-y-5 rounded-2xl border border-indigo-100 bg-white p-4 shadow">
           <Block icon="clock" title="When">
             <div className="grid grid-cols-2 gap-2">
               <Choice on={timing === "now"} onClick={() => setTiming("now")} icon="bolt" label="Now" sub="As soon as possible" />
@@ -535,13 +566,7 @@ export default function CustomerPanel({
             </div>
             {timing === "later" && (
               <div className="slide-in space-y-1">
-                <input
-                  type="datetime-local"
-                  min={minWhen}
-                  className={FIELD}
-                  value={when}
-                  onChange={(e) => setWhen(e.target.value)}
-                />
+                <input type="datetime-local" min={minWhen} className={FIELD} value={when} onChange={(e) => setWhen(e.target.value)} />
                 <p className="text-xs text-gray-700">
                   At least 1 hour from now. Drivers can accept ahead of time, and yours starts at the booked time.
                 </p>
@@ -771,6 +796,33 @@ export default function CustomerPanel({
                 </PersonRow>
               )}
 
+              {b.pin && b.status === "accepted" && (
+                <div className="rounded-2xl border-2 border-indigo-200 bg-indigo-50 p-3 space-y-2">
+                  <p className="text-[11px] font-bold uppercase tracking-wider text-gray-700">Your start code</p>
+                  <div className="flex gap-2">
+                    {b.pin.split("").map((c, i) => (
+                      <span
+                        key={i}
+                        className="w-11 h-12 rounded-xl bg-white border-2 border-indigo-300 flex items-center justify-center text-2xl font-extrabold"
+                      >
+                        {c}
+                      </span>
+                    ))}
+                  </div>
+                  <p className="text-xs text-gray-800">Tell this code to your driver when they arrive. Do not share it before.</p>
+                </div>
+              )}
+
+              {b.paid && live && b.driver && (
+                <SafetyButton
+                  bookingId={b.id}
+                  task={b.task_type}
+                  destination={b.destination}
+                  who={b.driver.full_name}
+                  plate={b.vehicle === "driver_car" ? b.driver.car_plate : null}
+                />
+              )}
+
               {b.status === "accepted" && !b.paid && (
                 <div className="space-y-2 rounded-xl bg-indigo-50 p-3">
                   <p className="text-sm font-bold">Pay to confirm your driver</p>
@@ -798,6 +850,10 @@ export default function CustomerPanel({
                     </button>
                   )}
                   {payMsg && <p className="text-sm font-semibold">{payMsg}</p>}
+                  <p className="text-xs text-gray-700">
+                    Free cancellation until {pricing.cancel_free_hours} hours before the trip. After you have paid, later
+                    cancellations carry a fee of KES {pricing.cancel_fee}.
+                  </p>
                 </div>
               )}
 
@@ -821,7 +877,7 @@ export default function CustomerPanel({
 
               {(b.status === "requested" || b.status === "accepted") && (
                 <button
-                  onClick={() => cancel(b.id, b.paid)}
+                  onClick={() => cancel(b)}
                   className="w-full bg-white border-2 border-red-200 text-red-700 font-bold rounded-xl p-3 text-sm active:scale-[0.98]"
                 >
                   {b.paid ? "Cancel and request refund" : "Cancel booking"}

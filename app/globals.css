@@ -413,3 +413,32 @@ input[type="checkbox"]:focus-visible {
   background: linear-gradient(90deg, transparent, #6366f1, transparent);
   animation: bar-slide 1.4s ease-in-out infinite;
 }
+@media print {
+  .no-print { display: none !important; }
+  body { background: #ffffff !important; }
+  .print-card { box-shadow: none !important; border: 1px solid #d1d5db !important; }
+}
+/* ---------- One focus highlight, not two ---------- */
+:root { --focus-color: #4f46e5; }
+[data-theme="dark"] { --focus-color: #818cf8; }
+
+input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):focus,
+textarea:focus,
+select:focus {
+  outline: none;
+  box-shadow: none;
+  border-color: var(--focus-color);
+}
+input[class*="border-red"]:focus,
+textarea[class*="border-red"]:focus {
+  border-color: #ef4444;
+}
+/* ---------- Admin area ---------- */
+.admin-shell { --bar: calc(3.5rem + env(safe-area-inset-top, 0px)); --side: 16rem; }
+.admin-shell[data-hidden="true"] { --side: 0rem; }
+@media (min-width: 1024px) { .admin-shell { --bar: 0px; } }
+
+/* No flying-in cards inside the admin area: everything is simply there */
+.admin-shell .slide-in,
+.admin-shell .anim-rise { animation: none; }
+.admin-shell .stagger > * { animation: none; opacity: 1; }

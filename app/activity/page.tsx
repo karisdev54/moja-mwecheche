@@ -7,24 +7,25 @@ import DriverRating from "@/components/DriverRating";
 import RateDriver from "@/components/RateDriver";
 import Loader from "@/components/Loader";
 import { Icon, Num, Tile } from "@/components/AdminUI";
-import { confirmDialog } from "@/lib/dialog";
+import { alertDialog, confirmDialog } from "@/lib/dialog";
+import { friendlyError } from "@/lib/net";
 
 type Item = {
   id: string;
   task_type: string;
   scheduled_at: string;
-  duration_hours: number;
   destination: string | null;
   price: number;
   status: string;
   paid: boolean;
   driver_id: string | null;
   driver_earnings: number | null;
+  cancel_fee_charged: number | null;
   refund_status: string;
   rating_skipped: boolean;
+  route_km: number | null;
   my_rating: number | null;
   review: { rating: number; comment: string | null } | null;
-  route_km: number | null;
 };
 type Data = { userId: string; role: string; items: Item[] };
 
@@ -49,6 +50,13 @@ const dayLabel = (iso: string) =>
   new Date(iso).toLocaleDateString([], { weekday: "long", day: "numeric", month: "short" });
 const timeLabel = (iso: string) => new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 
+// What this trip is worth to the person looking at it. Null means "no amount yet".
+function amountOf(i: Item, driver: boolean): number | null {
+  if (driver) return i.driver_earnings === null ? null : Number(i.driver_earnings);
+  if (i.status === "cancelled") return i.paid ? Number(i.cancel_fee_charged ?? 0) : null;
+  return Number(i.price);
+}
+
 function Pill({ text, color }: { text: string; color: string }) {
   return (
     <span
@@ -67,11 +75,12 @@ async function fetchActivity(): Promise<Data | "login" | "admin"> {
   const { data: me } = await supabase.from("profiles").select("role").eq("id", u.user.id).maybeSingle();
   const role = me?.role ?? "customer";
   if (role === "admin") return "admin";
+
   const column = role === "driver" ? "driver_id" : "customer_id";
   const { data } = await supabase
     .from("bookings")
     .select(
-      "id,task_type,scheduled_at,duration_hours,destination,price,status,paid,driver_id,driver_earnings,refund_status,rating_skipped,route_km"
+      "id,task_type,scheduled_at,destination,price,status,paid,driver_id,driver_earnings,cancel_fee_charged,refund_status,rating_skipped,route_km"
     )
     .eq(column, u.user.id)
     .order("scheduled_at", { ascending: false })
@@ -121,10 +130,27 @@ export default function ActivityPage() {
     };
   }, [router, tick]);
 
+  // Refresh when the person comes back to the app, so refunds and receipts are never stale
+  useEffect(() => {
+    const again = () => {
+      if (document.visibilityState === "visible") setTick((t) => t + 1);
+    };
+    window.addEventListener("focus", again);
+    document.addEventListener("visibilitychange", again);
+    return () => {
+      window.removeEventListener("focus", again);
+      document.removeEventListener("visibilitychange", again);
+    };
+  }, []);
+
   const refresh = () => setTick((t) => t + 1);
 
   const skip = async (id: string) => {
-    await supabase.from("bookings").update({ rating_skipped: true }).eq("id", id);
+    const { error } = await supabase.from("bookings").update({ rating_skipped: true }).eq("id", id);
+    if (error) {
+      await alertDialog({ title: "Could not skip", message: friendlyError(error.message) });
+      return;
+    }
     setReopen((r) => r.filter((x) => x !== id));
     refresh();
   };
@@ -137,7 +163,11 @@ export default function ActivityPage() {
       danger: true,
     });
     if (!ok) return;
-    await supabase.from("bookings").delete().eq("id", id);
+    const { error } = await supabase.from("bookings").delete().eq("id", id);
+    if (error) {
+      await alertDialog({ title: "Could not remove", message: friendlyError(error.message) });
+      return;
+    }
     refresh();
   };
 
@@ -145,7 +175,8 @@ export default function ActivityPage() {
 
   const isDriver = data.role === "driver";
   const done = data.items.filter((i) => i.status === "completed" && i.paid);
-  const total = done.reduce((s, i) => s + Number(isDriver ? i.driver_earnings ?? 0 : i.price), 0);
+  const counted = data.items.filter((i) => i.paid && (i.status === "completed" || i.status === "cancelled"));
+  const total = counted.reduce((s, i) => s + (amountOf(i, isDriver) ?? 0), 0);
 
   const counts = FILTERS.map((f) =>
     f.match ? data.items.filter((i) => f.match!.includes(i.status)).length : data.items.length
@@ -229,14 +260,12 @@ export default function ActivityPage() {
           const st = STATUS[i.status] ?? { label: i.status, color: "#6b7280" };
           const label = dayLabel(i.scheduled_at);
           const head = idx === 0 || dayLabel(shown[idx - 1].scheduled_at) !== label;
-          const amount = Number(isDriver && i.driver_earnings ? i.driver_earnings : i.price);
+          const amt = amountOf(i, isDriver);
           const canRemove = !isDriver && !i.paid && !i.driver_id && (i.status === "expired" || i.status === "cancelled");
 
           return (
             <Fragment key={i.id}>
-              {head && (
-                <h2 className="text-xs font-bold uppercase tracking-wider text-gray-700 pt-1">{label}</h2>
-              )}
+              {head && <h2 className="text-xs font-bold uppercase tracking-wider text-gray-700 pt-1">{label}</h2>}
 
               <article
                 className="slide-in bg-white rounded-2xl shadow overflow-hidden flex"
@@ -250,8 +279,12 @@ export default function ActivityPage() {
                       <p className="text-xs text-gray-700 mt-1 flex items-center gap-1.5">
                         <Icon name="clock" className="w-3.5 h-3.5" />
                         {timeLabel(i.scheduled_at)}
-                        <span aria-hidden="true">·</span>
-                        {i.route_km ?? "-"} km
+                        {i.route_km ? (
+                          <>
+                            <span aria-hidden="true">·</span>
+                            {i.route_km} km
+                          </>
+                        ) : null}
                       </p>
                     </div>
                     <Pill text={st.label} color={st.color} />
@@ -262,7 +295,11 @@ export default function ActivityPage() {
                       <p className="text-[11px] font-bold uppercase tracking-wider text-gray-700">
                         {isDriver ? "You earn" : "Amount"}
                       </p>
-                      <p className="text-2xl font-extrabold tracking-tight">{money(amount)}</p>
+                      {amt === null ? (
+                        <p className="text-lg font-bold text-gray-700">{isDriver ? "Pending" : "Not charged"}</p>
+                      ) : (
+                        <p className="text-2xl font-extrabold tracking-tight">{money(amt)}</p>
+                      )}
                     </div>
                     {i.paid && <Pill text="Paid" color="#059669" />}
                   </div>
@@ -291,16 +328,19 @@ export default function ActivityPage() {
                     </div>
                   )}
 
-                  <div className="flex items-center gap-4 pt-1">
+                  <div className="flex items-center gap-4 pt-1 flex-wrap">
                     <Link href={`/report?booking=${i.id}`} className="inline-flex items-center gap-1.5 text-xs font-bold text-gray-700">
                       <Icon name="flag" className="w-4 h-4" />
                       Report a problem
                     </Link>
+                    {i.paid && (i.status === "completed" || i.status === "cancelled") && (
+                      <Link href={`/receipt/${i.id}`} className="inline-flex items-center gap-1.5 text-xs font-bold text-indigo-700">
+                        <Icon name="receipt" className="w-4 h-4" />
+                        {isDriver ? "Statement" : "Receipt"}
+                      </Link>
+                    )}
                     {canRemove && (
-                      <button
-                        onClick={() => remove(i.id)}
-                        className="inline-flex items-center gap-1.5 text-xs font-bold text-red-600"
-                      >
+                      <button onClick={() => remove(i.id)} className="inline-flex items-center gap-1.5 text-xs font-bold text-red-600">
                         <Icon name="trash" className="w-4 h-4" />
                         Remove
                       </button>
@@ -324,12 +364,7 @@ export default function ActivityPage() {
                           Rate this driver
                         </button>
                       ) : (
-                        <RateDriver
-                          bookingId={i.id}
-                          customerId={data.userId}
-                          onDone={refresh}
-                          onSkip={() => skip(i.id)}
-                        />
+                        <RateDriver bookingId={i.id} customerId={data.userId} onDone={refresh} onSkip={() => skip(i.id)} />
                       )}
                     </div>
                   )}

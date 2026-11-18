@@ -24,8 +24,8 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Too many attempts. Please try again later." }, { status: 429 });
   }
   // Accounts that have a password must prove they know it
-  const providers = (user.app_metadata?.providers as string[] | undefined) ?? [];
-  if (providers.includes("email")) {
+   const { data: hasPw } = await supabaseAdmin.rpc("has_password_for", { p_user: user.id });
+  if (hasPw === true) {
     if (!body.password) return NextResponse.json({ error: "Enter your password." }, { status: 400 });
     const anon = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL as string,

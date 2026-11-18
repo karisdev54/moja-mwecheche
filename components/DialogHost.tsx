@@ -95,6 +95,7 @@ function Box({ d }: { d: DialogReq }) {
                     setErr("");
                   }}
                   onKeyDown={(e) => e.key === "Enter" && ok()}
+                  inputMode={d.numeric ? "numeric" : undefined}
                 />
               )}
               <div className="flex items-center justify-between gap-2">

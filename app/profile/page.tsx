@@ -331,9 +331,10 @@ export default function ProfilePage() {
           </Link>
         )}
         <Card title="Account">
+          {isDriver && <Row href="/earnings" icon="wallet" label="Earnings" color="#10b981" />}
           <Row href="/profile/edit" icon="edit" label="Edit profile" color="#6366f1" />
           {!isAdmin && <Row href="/profile/car" icon="car" label="My vehicle" hint={me.has_car === true ? formatPlate(me.car_plate) : me.has_car === false ? "None" : "Not set"} color="#0ea5e9" />}
-          <Row href="/profile/password" icon="lock" label="Change password" color="#8b5cf6" />
+          <Row href="/profile/password" icon="lock" label="Password" color="#8b5cf6" />
           <Row href="/profile/appearance" icon="sun" label="Appearance" hint={THEME_LABEL[themePref]} color="#f59e0b" />
         </Card>
 

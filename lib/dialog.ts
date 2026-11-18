@@ -10,6 +10,7 @@ export type PromptOpts = Base & {
   minLength?: number;
   maxLength?: number;
   initial?: string;
+  numeric?: boolean;
 };
 
 export type DialogReq =

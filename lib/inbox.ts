@@ -4,6 +4,7 @@ import { supabase } from "@/lib/supabase";
 
 export type Inbox = {
   drivers_pending: number;
+  cars_pending: number;
   refunds_count: number;
   refunds_amount: number;
   reports_open: number;
@@ -11,13 +12,19 @@ export type Inbox = {
   owed_total: number;
   owed_drivers: number;
   stuck_payments: number;
-  cars_pending: number;
+  payout_requests: number;
+  payout_requests_amount: number;
+  recon_issues: number;
 };
 
 export const inboxTotal = (i: Inbox) =>
- i.drivers_pending + i.cars_pending + i.refunds_count + i.reports_open + i.owed_drivers + i.stuck_payments;
-
-// One shared copy of the data and one timer, however many components use it
+  (i.drivers_pending ?? 0) +
+  (i.cars_pending ?? 0) +
+  (i.refunds_count ?? 0) +
+  (i.reports_open ?? 0) +
+  (i.payout_requests ?? 0) +
+  (i.recon_issues ?? 0);
+  // One shared copy of the data and one timer, however many components use it
 let state: Inbox | null = null;
 let notAdmin = false;
 let timer: ReturnType<typeof setInterval> | undefined;

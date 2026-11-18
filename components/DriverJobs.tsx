@@ -4,9 +4,10 @@ import { supabase } from "@/lib/supabase";
 import { fmtMinutes, getRoute, type LngLat, type RouteView } from "@/lib/mapbox";
 import Guidance from "@/components/Guidance";
 import PlateBadge from "@/components/PlateBadge";
-import { alertDialog, confirmDialog, promptDialog } from "@/lib/dialog";
+import { alertDialog, promptDialog } from "@/lib/dialog";
 import { Icon, PersonRow, Tile } from "@/components/AdminUI";
 import JobTracker from "@/components/JobTracker";
+import SafetyButton from "@/components/SafetyButton";
 
 type Job = {
   id: string;
@@ -259,6 +260,35 @@ export default function DriverJobs({
     clearRoute();
     setGuideId((cur) => (cur === id ? null : id));
   };
+    const startWithCode = async (id: string) => {
+    const code = await promptDialog({
+      title: "Enter the start code",
+      message: "Ask the customer for the 4-digit code shown in their app.",
+      placeholder: "4-digit code",
+      required: true,
+      minLength: 4,
+      maxLength: 4,
+      numeric: true,
+      confirmText: "Start trip",
+    });
+    if (code === null) return;
+
+    const { data, error } = await supabase.rpc("start_job", { p_booking: id, p_pin: code });
+    if (error) {
+      await alertDialog({ title: "Could not start the trip", message: error.message });
+      reload();
+      return;
+    }
+    const res = data as { ok: boolean; message?: string };
+    if (!res.ok) {
+      await alertDialog({ title: "Wrong code", message: res.message ?? "That code is not correct." });
+      return;
+    }
+    const j = jobs.find((x) => x.id === id);
+    clearRoute();
+    setGuideId(j && j.dest_lat !== null && j.dest_lng !== null ? id : null);
+    reload();
+  };
 
   // The three queues
   const mine = jobs
@@ -405,6 +435,17 @@ export default function DriverJobs({
                   )}
                 </PersonRow>
               )}
+              
+              {j.status === "in_progress" && (
+                <SafetyButton
+                  bookingId={j.id}
+                  task={j.task_type}
+                  destination={j.destination}
+                  who={j.customer?.full_name}
+                  plate={j.vehicle === "customer_car" ? j.customer?.car_plate : null}
+                />
+              )}
+
 
               {shown?.jobId === j.id && (
                 <p className="flex items-center gap-2 text-sm font-semibold text-indigo-800">
@@ -492,7 +533,7 @@ export default function DriverJobs({
               ) : (
                 NEXT[j.status] && (
                   <button
-                    onClick={() => advance(j.id, NEXT[j.status].status)}
+                    onClick={() => (j.status === "accepted" ? startWithCode(j.id) : advance(j.id, NEXT[j.status].status))}
                     className="btn-shine grad-bg w-full text-white font-bold rounded-xl p-3.5 shadow-lg active:scale-[0.98]"
                   >
                     {NEXT[j.status].label}

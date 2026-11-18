@@ -3,6 +3,8 @@ import { useEffect, useRef } from "react";
 import { inboxTotal, useInbox, type Inbox } from "@/lib/inbox";
 import { toast } from "@/lib/toast";
 
+const n = (v: number | undefined) => v ?? 0;
+
 export default function AdminToaster() {
   const inbox = useInbox();
   const prev = useRef<Inbox | null>(null);
@@ -16,17 +18,31 @@ export default function AdminToaster() {
     if (!p) {
       const total = inboxTotal(inbox);
       if (total > 0) {
-        toast(`🔔 ${total} thing${total === 1 ? "" : "s"} waiting for you`, { href: "/admin/notifications", tone: "warn" });
+        toast(`${total} thing${total === 1 ? "" : "s"} waiting for you`, { href: "/admin/notifications", tone: "warn" });
       }
       return;
     }
 
-    if (inbox.reports_safety > p.reports_safety) toast("🚨 New safety report", { href: "/admin/reports", tone: "danger" });
-    else if (inbox.reports_open > p.reports_open) toast("💬 New report", { href: "/admin/reports" });
-    if (inbox.drivers_pending > p.drivers_pending) toast("🪪 A driver is waiting for verification", { href: "/admin/verification" });
-    if (inbox.refunds_count > p.refunds_count) toast("↩️ A refund needs sending", { href: "/admin/refunds" });
-    if (inbox.owed_drivers > p.owed_drivers) toast("💸 A driver is waiting for a payout", { href: "/admin/payouts" });
-    if (inbox.stuck_payments > p.stuck_payments) toast("⚠️ A payment looks stuck", { href: "/admin/notifications", tone: "warn" });
+    if (n(inbox.reports_safety) > n(p.reports_safety)) {
+      toast("New safety report", { href: "/admin/reports", tone: "danger" });
+    } else if (n(inbox.reports_open) > n(p.reports_open)) {
+      toast("New report", { href: "/admin/reports" });
+    }
+    if (n(inbox.drivers_pending) > n(p.drivers_pending)) {
+      toast("A driver is waiting for verification", { href: "/admin/verification" });
+    }
+    if (n(inbox.cars_pending) > n(p.cars_pending)) {
+      toast("A vehicle is waiting for approval", { href: "/admin/vehicles" });
+    }
+    if (n(inbox.refunds_count) > n(p.refunds_count)) {
+      toast("A refund needs sending", { href: "/admin/refunds" });
+    }
+    if (n(inbox.payout_requests) > n(p.payout_requests)) {
+      toast("A driver requested a payout", { href: "/admin/payouts" });
+    }
+    if (n(inbox.recon_issues) > n(p.recon_issues)) {
+      toast("The money check found something to look at", { href: "/admin/reconcile", tone: "warn" });
+    }
   }, [inbox]);
 
   return null;
