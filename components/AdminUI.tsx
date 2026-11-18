@@ -3,6 +3,8 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 import Avatar from "@/components/Avatar";
+import { useRouter } from "next/navigation";
+import { previousPath } from "@/lib/navstack";
 
 export const ICONS: Record<string, string[]> = {
   verify: ["M12 3l7 3v5c0 5-3.5 8-7 10-3.5-2-7-5-7-10V6l7-3z", "M9 12l2 2 4-4"],
@@ -214,16 +216,26 @@ export function PageHeader({
 }: {
   title: string;
   subtitle: string;
-  href?: string;
-  back?: string; // kept so pages that pass back="Profile" still compile; it names the button for screen readers
+  href?: string; // where the arrow goes when there is no previous page
+  back?: string;
 }) {
-  const label = back ? `Back to ${back}` : "Go back";
+  const router = useRouter();
+  const label = "Go back";
+
   return (
     <header className="flex items-center gap-3">
       <Link
         href={href}
-        aria-label={label}
+        aria-label={back ? `${label} to ${back}` : label}
         title={label}
+        onClick={(e) => {
+          // Let "open in a new tab" clicks behave normally
+          if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
+          if (previousPath(window.location.pathname)) {
+            e.preventDefault();
+            router.back();
+          }
+        }}
         className="w-10 h-10 shrink-0 flex items-center justify-center rounded-full bg-white border border-indigo-100 shadow-sm text-gray-700 hover:bg-indigo-50 hover:text-indigo-700 hover:border-indigo-200 active:scale-95 transition-all"
       >
         <Icon name="back" className="w-5 h-5" />

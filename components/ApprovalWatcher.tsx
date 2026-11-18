@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
@@ -10,35 +10,46 @@ type Win = { kind: "driver" | "car"; stamp: string; needsCar: boolean };
 const KEY = "seen-approvals";
 const WEEK = 7 * 24 * 3600 * 1000;
 
-function seen(): string[] {
+// A backup memory on this device, in case the database is unreachable when the person presses Continue
+function localSeen(id: string): boolean {
   try {
-    return JSON.parse(localStorage.getItem(KEY) ?? "[]") as string[];
+    return (JSON.parse(localStorage.getItem(KEY) ?? "[]") as string[]).includes(id);
   } catch {
-    return [];
+    return false;
   }
 }
-function remember(id: string) {
+function localRemember(id: string) {
   try {
-    localStorage.setItem(KEY, JSON.stringify([id, ...seen().filter((x) => x !== id)].slice(0, 30)));
+    const list = JSON.parse(localStorage.getItem(KEY) ?? "[]") as string[];
+    localStorage.setItem(KEY, JSON.stringify([id, ...list.filter((x) => x !== id)].slice(0, 30)));
   } catch {
-    // storage blocked: the popup may show again, which is harmless
+    // storage blocked
   }
 }
+
 const recent = (iso: string) => Date.now() - new Date(iso).getTime() < WEEK;
+// Not acknowledged yet, or acknowledged before this approval happened
+const unseen = (approved: string, seen: string | null) => !seen || new Date(seen).getTime() < new Date(approved).getTime();
 
 async function find(userId: string, role: string): Promise<Win | null> {
-  const done = seen();
-
   if (role === "driver") {
-    const { data: d } = await supabase.from("drivers").select("is_verified,approved_at").eq("id", userId).maybeSingle();
-    if (d?.is_verified && d.approved_at && recent(d.approved_at) && !done.includes(`driver:${d.approved_at}`)) {
+    const { data: d } = await supabase
+      .from("drivers")
+      .select("is_verified,approved_at,approval_seen_at")
+      .eq("id", userId)
+      .maybeSingle();
+    if (d?.is_verified && d.approved_at && recent(d.approved_at) && unseen(d.approved_at, d.approval_seen_at)) {
       const { data: p } = await supabase.from("profiles").select("has_car,car_status").eq("id", userId).maybeSingle();
       return { kind: "driver", stamp: d.approved_at, needsCar: p?.has_car === true && p.car_status !== "approved" };
     }
   }
 
-  const { data: c } = await supabase.from("profiles").select("car_status,car_approved_at").eq("id", userId).maybeSingle();
-  if (c?.car_status === "approved" && c.car_approved_at && recent(c.car_approved_at) && !done.includes(`car:${c.car_approved_at}`)) {
+  const { data: c } = await supabase
+    .from("profiles")
+    .select("car_status,car_approved_at,car_approval_seen_at")
+    .eq("id", userId)
+    .maybeSingle();
+  if (c?.car_status === "approved" && c.car_approved_at && recent(c.car_approved_at) && unseen(c.car_approved_at, c.car_approval_seen_at)) {
     return { kind: "car", stamp: c.car_approved_at, needsCar: false };
   }
   return null;
@@ -46,16 +57,29 @@ async function find(userId: string, role: string): Promise<Win | null> {
 
 export default function ApprovalWatcher({ userId, role }: { userId: string; role: "customer" | "driver" }) {
   const [win, setWin] = useState<Win | null>(null);
+  const dismissed = useRef<Set<string>>(new Set()); // never show the same approval twice in one session
+  const running = useRef(false);
+  const lastRun = useRef(0);
 
   useEffect(() => {
     let active = true;
-    const check = () => {
-      find(userId, role).then((w) => {
-        if (active && w) setWin((cur) => cur ?? w);
-      });
+
+    const check = async () => {
+      // One check at a time, and not more than once every few seconds
+      if (running.current || Date.now() - lastRun.current < 4000) return;
+      running.current = true;
+      lastRun.current = Date.now();
+      const w = await find(userId, role);
+      running.current = false;
+      if (!active || !w) return;
+      const id = `${w.kind}:${w.stamp}`;
+      if (dismissed.current.has(id) || localSeen(id)) return;
+      setWin((cur) => cur ?? w);
     };
+
     check();
 
+    // Only an approval changes who we are, so listen to the driver's own row, but let check() ignore the noise
     const channel =
       role === "driver"
         ? supabase
@@ -64,7 +88,7 @@ export default function ApprovalWatcher({ userId, role }: { userId: string; role
             .subscribe()
         : null;
 
-    const timer = setInterval(check, 15000);
+    const timer = setInterval(check, 30000);
     window.addEventListener("focus", check);
     return () => {
       active = false;
@@ -77,8 +101,11 @@ export default function ApprovalWatcher({ userId, role }: { userId: string; role
   if (!win || typeof document === "undefined") return null;
 
   const close = () => {
-    remember(`${win.kind}:${win.stamp}`);
+    const id = `${win.kind}:${win.stamp}`;
+    dismissed.current.add(id);
+    localRemember(id);
     setWin(null);
+    void supabase.rpc("ack_approval", { p_kind: win.kind }); // remembered on the account, on every device
   };
 
   const isDriver = win.kind === "driver";
@@ -97,10 +124,7 @@ export default function ApprovalWatcher({ userId, role }: { userId: string; role
       className="fixed inset-0 z-[90] flex items-center justify-center overflow-hidden bg-black/60 px-4 pt-[max(1rem,env(safe-area-inset-top))] pb-[max(1rem,env(safe-area-inset-bottom))]"
     >
       <div className="relative w-full max-w-sm max-h-[calc(100dvh-2rem)] overflow-y-auto rounded-[2rem] bg-white shadow-2xl pop-in text-gray-900">
-        <div
-          className="relative h-40 overflow-hidden"
-          style={{ background: "linear-gradient(135deg,#312e81 0%,#4338ca 45%,#0e7490 100%)" }}
-        >
+        <div className="relative h-40 overflow-hidden" style={{ background: "linear-gradient(135deg,#312e81 0%,#4338ca 45%,#0e7490 100%)" }}>
           {[
             { x: 12, y: 24, d: 0 },
             { x: 84, y: 18, d: 0.5 },
@@ -148,11 +172,7 @@ export default function ApprovalWatcher({ userId, role }: { userId: string; role
               Continue
             </button>
             {isDriver && win.needsCar && (
-              <Link
-                href="/profile/car"
-                onClick={close}
-                className="block w-full bg-white border-2 border-indigo-200 font-bold rounded-2xl p-3 active:scale-[0.98]"
-              >
+              <Link href="/profile/car" onClick={close} className="block w-full bg-white border-2 border-indigo-200 font-bold rounded-2xl p-3 active:scale-[0.98]">
                 Verify my vehicle
               </Link>
             )}

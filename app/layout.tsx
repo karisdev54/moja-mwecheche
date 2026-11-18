@@ -10,6 +10,7 @@ import SuspensionGate from "@/components/SuspensionGate";
 import OfflineGate from "@/components/OfflineGate";
 import DialogHost from "@/components/DialogHost";
 import { Suspense } from "react";
+import NavTracker from "@/components/NavTracker";
 
 const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
 const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
@@ -58,6 +59,9 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
           {children}
           <Suspense fallback={null}>
           <BottomNav />
+          </Suspense>
+          <Suspense fallback={null}>
+            <NavTracker />
           </Suspense>
         </MotionProvider>
       </body>
